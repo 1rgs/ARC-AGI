@@ -1,16 +1,21 @@
-
 // Internal state.
 var CURRENT_INPUT_GRID = new Grid(3, 3);
 var CURRENT_OUTPUT_GRID = new Grid(3, 3);
 var TEST_PAIRS = new Array();
 var CURRENT_TEST_PAIR_INDEX = 0;
 var COPY_PASTE_DATA = new Array();
-
+var TASKS = []; // Global variable to store tasks
+var CURRENT_TASK_INDEX = 0; // Index of the current task
+const subset = "training";
+$.getJSON("https://api.github.com/repos/fchollet/ARC/contents/data/" + subset, function(tasks) {
+    TASKS = tasks; // Store tasks globally
+    // select the first task
+    loadTaskByIndex(0);
+})
 // Cosmetic.
 var EDITION_GRID_HEIGHT = 500;
 var EDITION_GRID_WIDTH = 500;
 var MAX_CELL_SIZE = 100;
-
 
 function resetTask() {
     CURRENT_INPUT_GRID = new Grid(3, 3);
@@ -145,6 +150,7 @@ function display_task_name(task_name, task_index, number_of_tasks) {
             ( String(task_index) + ' out of ' + String(number_of_tasks) )
         )
     );
+    $('#task_index_display').text(`Task ${task_index + 1} of ${number_of_tasks}`);
 }
 
 function loadTaskFromFile(e) {
@@ -176,28 +182,52 @@ function loadTaskFromFile(e) {
 function randomTask() {
     var subset = "training";
     $.getJSON("https://api.github.com/repos/fchollet/ARC/contents/data/" + subset, function(tasks) {
-        var task_index = Math.floor(Math.random() * tasks.length)
-        var task = tasks[task_index];
-        $.getJSON(task["download_url"], function(json) {
-            try {
-                train = json['train'];
-                test = json['test'];
-            } catch (e) {
-                errorMsg('Bad file format');
-                return;
-            }
-            loadJSONTask(train, test);
-            //$('#load_task_file_input')[0].value = "";
-            infoMsg("Loaded task training/" + task["name"]);
-            display_task_name(task['name'], task_index, tasks.length);
-        })
-        .error(function(){
-          errorMsg('Error loading task');
-        });
+        TASKS = tasks; // Store tasks globally
+        loadTaskByIndex(0);
     })
     .error(function(){
       errorMsg('Error loading task list');
     });
+}
+
+function loadTaskByIndex(index) {
+    console.log(1)
+    if (index >= TASKS.length) {
+        console.log(2)
+        errorMsg('No more tasks available.');
+        return;
+    }
+    CURRENT_TASK_INDEX = index;
+    var task = TASKS[index];
+    console.log('task');
+    $.getJSON(task["download_url"], function(json) {
+        console.log(json);
+        try {
+            train = json['train'];
+            test = json['test'];
+        } catch (e) {
+            errorMsg('Bad file format');
+            return;
+        }
+        loadJSONTask(train, test);
+        infoMsg("Loaded task training/" + task["name"]);
+        display_task_name(task['name'], index, TASKS.length);
+    })
+    .error(function(){
+      errorMsg('Error loading task');
+    });
+}
+
+function firstTask() {
+    loadTaskByIndex(0);
+}
+
+function nextTask() {
+    if (CURRENT_TASK_INDEX + 1 < TASKS.length) {
+        loadTaskByIndex(CURRENT_TASK_INDEX + 1);
+    } else {
+        errorMsg('No more tasks available.');
+    }
 }
 
 function nextTestInput() {
@@ -210,7 +240,7 @@ function nextTestInput() {
     CURRENT_INPUT_GRID = convertSerializedGridToGridObject(values)
     fillTestInput(CURRENT_INPUT_GRID);
     $('#current_test_input_id_display').html(CURRENT_TEST_PAIR_INDEX + 1);
-    $('#total_test_input_count_display').html(test.length);
+    $('#total_test_input_count_display').html(TEST_PAIRS.length);
 }
 
 function submitSolution() {
@@ -297,9 +327,20 @@ $(document).ready(function () {
         loadTaskFromFile(event);
     });
 
-    $('.load_task').on('click', function(event) {
-      event.target.value = "";
+    $('#first_task_btn').on('click', function(event) {
+        firstTask();
     });
+    $('#next_task_btn').on('click', function(event) {
+        nextTask();
+    });
+
+    $('#previous_task_btn').on('click', function(event) {
+        if (CURRENT_TASK_INDEX > 0) {
+            loadTaskByIndex(CURRENT_TASK_INDEX - 1);
+        } else {
+            errorMsg('No previous tasks available.');
+        }
+    })  
 
     $('input[type=radio][name=tool_switching]').change(function() {
         initializeSelectable();
