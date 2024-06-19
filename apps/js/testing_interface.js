@@ -218,6 +218,26 @@ function loadTaskByIndex(index) {
     });
 }
 
+function loadTaskById(id) {
+
+    if (!id) {
+        // get it from #task_id
+        id = $('#task_id').val();
+
+        // if it doesn't end with .json, add it
+        if (!id.endsWith('.json')) {
+            id += '.json';
+    }
+
+    const task = TASKS.find(task => task.name === id);
+    if (task) {
+        loadTaskByIndex(TASKS.indexOf(task));
+    } else {
+        errorMsg('Task not found');
+    }
+}
+
+
 function firstTask() {
     loadTaskByIndex(0);
 }

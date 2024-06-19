@@ -86,6 +86,14 @@
               <label id="task_index_display">Task 0 of 0</label>
               <button onclick="nextTask()">Next Task</button>
               <button id="previous_task_btn">Previous Task</button>
+
+              <!-- add a text box here and a button when clicked call loadTaskById with contents of text box -->
+              <form id="load_task_by_id_form">
+                <label for="task_id">Load task by ID: </label>
+                <input type="text" id="task_id" name="task_id" />
+                <button type="button" onclick="loadTaskById()">Load</button>
+              </form>
+              
             </p>
           </div>
 
