@@ -422,13 +422,11 @@ This transformation results in a grid that partially resembles the input, but wi
 
 
 class DrawSquaresTask(GridTask):
-    def __init__(self):
+    def __init__(self, grid_size, colors, num_squares):
         super().__init__()
-        self.grid_size = np.random.randint(MIN_GRID_SIZE, MAX_GRID_SIZE + 1)
-        self.colors = np.random.choice(
-            list(range(1, 7)), size=np.random.randint(2, 7), replace=False
-        )
-        self.num_squares = np.random.randint(1, 4)
+        self.grid_size = grid_size
+        self.colors = colors
+        self.num_squares = num_squares
 
     def sample(self):
         grid = np.zeros((self.grid_size, self.grid_size), dtype=int)
@@ -461,7 +459,7 @@ class DrawSquaresTask(GridTask):
                 if color != 0:  # Exclude the background color
                     percentage = (color_counts[color] / total_cells) * 100
                     color_descriptions.append(
-                        f"{self.color_map[color]} ({percentage:.1f}%)"
+                        f"{self.color_map[color]} ({color_counts[color]} cells, {percentage:.1f}%)"
                     )
 
             color_list = (
@@ -470,10 +468,26 @@ class DrawSquaresTask(GridTask):
                 else color_descriptions[0]
             )
 
-            return (
-                f"The {grid_name} is a {self.grid_size}x{self.grid_size} square with a black background, containing colored squares. "
-                f"The colors present are {color_list}."
+            squares = []
+            for color in self.colors:
+                if color in color_counts:
+                    squares.append(
+                        f"a {self.color_map[color]} square with {color_counts[color]} cells"
+                    )
+
+            square_description = (
+                ", ".join(squares[:-1]) + f" and {squares[-1]}"
+                if len(squares) > 1
+                else squares[0]
             )
+
+            return f"""Looking at the {grid_name}, we see a {self.grid_size}x{self.grid_size} square grid. 
+The grid has a black background, which forms the majority of the space.
+There are {self.num_squares} colored square{'s' if self.num_squares > 1 else ''} on this background: {square_description}.
+The colors present in this grid are {color_list}.
+The colored cells occupy {np.sum(grid > 0)} cells ({(np.sum(grid > 0) / total_cells) * 100:.1f}% of the grid), 
+while the remaining {np.sum(grid == 0)} cells ({(np.sum(grid == 0) / total_cells) * 100:.1f}% of the grid) are black background.
+The squares appear to be randomly positioned and may have different sizes."""
 
         input_description = describe_grid(input_grid, "input grid")
         output_description = describe_grid(output_grid, "output grid")
@@ -482,32 +496,59 @@ class DrawSquaresTask(GridTask):
         percentage_changed = (changed_cells / (self.grid_size * self.grid_size)) * 100
 
         difference = f"""
-The main difference between the input and output grids is:
-1. All cells that were {self.color_map[self.color1]} in the input grid have been changed to {self.color_map[self.color2]} in the output grid.
+When comparing the input and output grids, we notice several key differences:
+
+1. The most striking change is that all cells that were {self.color_map[self.color1]} in the input grid have been changed to {self.color_map[self.color2]} in the output grid.
 2. This color replacement affects {changed_cells} cells, which is {percentage_changed:.1f}% of the total grid.
-3. The positions and sizes of the squares remain the same, only the color of one type of square has changed.
-4. The overall structure of the grid remains unchanged, with the same number and arrangement of squares.
+3. The positions and sizes of all squares remain exactly the same; only the color of one type of square has changed.
+4. The overall structure and layout of the grid remains unchanged, with the same number and arrangement of squares.
+5. The black background cells are unaffected by this transformation.
+6. If there were any {self.color_map[self.color2]} squares in the input grid, they now appear identical to the transformed {self.color_map[self.color1]} squares in the output grid.
+7. This change might affect how we perceive the relationships between squares:
+   - Squares that were distinct in the input grid might now appear merged if they're adjacent.
+   - New color contrasts might have formed between the changed squares and other colored squares.
+
+This transformation results in a grid where one color has been completely replaced by another, potentially altering the visual grouping and separation of squares within the grid.
 """
 
         return f"{input_description}\n\n{output_description}\n\n{difference}"
 
     def generate_pattern_description(self) -> str:
-        return """
-The pattern that transforms the input grid to the output grid involves a color replacement within the existing squares. Specifically:
+        return f"""
+After carefully observing the changes between the input and output grids, we can describe the pattern of transformation as follows:
 
-1. The transformation identifies one source color among the colored squares in the input grid.
+1. Grid Structure:
+   - We start with a {self.grid_size}x{self.grid_size} grid.
+   - The grid contains {self.num_squares} colored square{'s' if self.num_squares > 1 else ''} on a black background.
+   - These squares have various sizes and are randomly positioned.
 
-2. It then replaces all occurrences of this source color with a different target color.
+2. Color Identification:
+   - The transformation identifies two specific colors: {self.color_map[self.color1]} (source color) and {self.color_map[self.color2]} (target color).
 
-3. This color change affects entire squares if they were originally the source color, potentially altering the visual relationships between squares.
+3. Color Replacement:
+   - Every cell in the grid that is the source color ({self.color_map[self.color1]}) is changed to the target color ({self.color_map[self.color2]}).
+   - This replacement is applied consistently across the entire grid.
 
-4. The replacement is consistent across the entire grid, changing every instance of the source color to the target color.
+4. Shape Preservation:
+   - The sizes, positions, and shapes of all squares remain unchanged.
+   - Only the color of the affected squares changes; their structure is maintained.
 
-5. The sizes, positions, and shapes of all squares remain unchanged; only their colors are affected.
+5. Selective Transformation:
+   - Only squares of the source color are affected.
+   - Squares of other colors and the black background remain unchanged.
 
-6. The black background of the grid, where no squares were drawn, remains unaffected by this transformation.
+6. Complete Replacement:
+   - After the transformation, there are no cells left with the source color in the grid.
+   - All instances of the source color have been replaced by the target color.
 
-This color replacement can result in various outcomes, such as making previously distinct squares appear merged if they now share the same color, or creating new color contrasts between squares. The overall geometric structure of the grid, however, remains constant throughout this transformation.
+7. Potential Visual Effects:
+   - This transformation can lead to visual merging of previously distinct squares if they become the same color.
+   - It may also create new color contrasts between the changed squares and unchanged squares of other colors.
+
+8. Consistency:
+   - The same color replacement rule is applied uniformly across the entire grid, regardless of the position or size of the squares.
+
+This pattern effectively performs a targeted color substitution within the grid, maintaining the overall structure while potentially altering the visual relationships between squares. It demonstrates how a simple color change can significantly impact the perception of shapes and their arrangements within a grid.
 """
 
 
@@ -2775,7 +2816,10 @@ class AddNoiseAndLinesTask(GridTask):
 
         for row in range(self.grid_size - 1):
             for col in range(self.grid_size):
-                if grid[row, col] == self.line_color and grid[row + 1, col] == self.line_color:
+                if (
+                    grid[row, col] == self.line_color
+                    and grid[row + 1, col] == self.line_color
+                ):
                     new_grid[row, col] = self.new_line_color
                     new_grid[row + 1, col] = 0
                     if col + 1 < self.grid_size:
@@ -2785,7 +2829,9 @@ class AddNoiseAndLinesTask(GridTask):
         pattern = self.generate_pattern_description()
         return new_grid, f"{description}\n\n{pattern}"
 
-    def generate_description(self, input_grid: np.ndarray, output_grid: np.ndarray) -> str:
+    def generate_description(
+        self, input_grid: np.ndarray, output_grid: np.ndarray
+    ) -> str:
         def describe_grid(grid, grid_name):
             unique, counts = np.unique(grid, return_counts=True)
             color_counts = dict(zip(unique, counts))
@@ -2795,9 +2841,15 @@ class AddNoiseAndLinesTask(GridTask):
             for color in sorted(color_counts.keys()):
                 if color != 0:  # Exclude the background color
                     percentage = (color_counts[color] / total_cells) * 100
-                    color_descriptions.append(f"{self.color_map[color]} ({color_counts[color]} cells, {percentage:.1f}%)")
+                    color_descriptions.append(
+                        f"{self.color_map[color]} ({color_counts[color]} cells, {percentage:.1f}%)"
+                    )
 
-            color_list = ", ".join(color_descriptions[:-1]) + f" and {color_descriptions[-1]}" if len(color_descriptions) > 1 else color_descriptions[0]
+            color_list = (
+                ", ".join(color_descriptions[:-1]) + f" and {color_descriptions[-1]}"
+                if len(color_descriptions) > 1
+                else color_descriptions[0]
+            )
 
             return f"""Looking at the {grid_name}, we see a {self.grid_size}x{self.grid_size} square grid. 
 The grid has a black background, which forms the majority of the space.
