@@ -2,7 +2,11 @@ import numpy as np
 import matplotlib.pyplot as plt
 from abc import ABC, abstractmethod
 import matplotlib.colors as mcolors
-
+import numpy as np
+import json
+import os
+import threading
+from queue import Queue
 
 # seed = 1
 # np.random.seed(seed)
@@ -230,20 +234,53 @@ class GridTask(ABC):
         """
         pass
 
+    def visualize(
+        self, input_grid: np.ndarray, output_grid: np.ndarray, instruction: str
+    ):
+        grid_size = input_grid.shape[0]
+        fig, axes = plt.subplots(1, 2, figsize=(12, 6))
+
+        # Create a custom colormap
+        cmap = mcolors.ListedColormap(
+            ["black"] + [self.color_map[i] for i in range(1, 7)]
+        )
+        bounds = np.arange(8) - 0.5
+        norm = mcolors.BoundaryNorm(bounds, cmap.N)
+
+        def plot_grid(ax, grid, title):
+            cax = ax.imshow(grid, cmap=cmap, norm=norm)
+            ax.set_title(title)
+            ax.set_xticks(np.arange(-0.5, grid_size, 1), minor=True)
+            ax.set_yticks(np.arange(-0.5, grid_size, 1), minor=True)
+            ax.grid(which="minor", color="gray", linestyle="-", linewidth=0.5)
+            ax.tick_params(which="minor", size=0)
+            fig.colorbar(cax, ax=ax, boundaries=bounds, ticks=np.arange(7))
+            ax.set_xticks(np.arange(0, grid_size, 1))
+            ax.set_yticks(np.arange(0, grid_size, 1))
+
+        plot_grid(axes[0], input_grid, "Input Grid")
+        plot_grid(axes[1], output_grid, "Output Grid")
+
+        # plt.suptitle(instruction)
+        plt.show()
+
 
 class ColorReplacementTask(GridTask):
-    def __init__(self):
+    def __init__(self, color1, color2):
         super().__init__()
         self.grid_size = np.random.randint(MIN_GRID_SIZE, MAX_GRID_SIZE + 1)
-        self.colors = np.random.choice(
-            list(range(1, 7)), size=np.random.randint(2, 7), replace=False
-        )
+        self.colors = np.random.choice(list(range(1, 7)), size=2, replace=False)
+
+        self.colors = np.append(self.colors, [color1, color2])
+
+        self.color1 = color1
+        self.color2 = color2
 
     def sample(self):
         return np.random.choice(self.colors, size=(self.grid_size, self.grid_size))
 
     def execute(self, grid: np.ndarray) -> (np.ndarray, str):
-        self.color1, self.color2 = np.random.choice(self.colors, size=2, replace=False)
+
         new_grid = np.copy(grid)
         new_grid[grid == self.color1] = self.color2
         description = self.generate_description(grid, new_grid)
@@ -317,19 +354,19 @@ This transformation results in a grid that looks similar to the input, but with 
 
 
 class ShiftGridTask(GridTask):
-    def __init__(self, grid_size, colors, fill_color, directions):
+    def __init__(self, grid_size, colors, fill_color, direction):
         super().__init__()
         self.grid_size = grid_size
         self.colors = colors
         self.fill_color = fill_color
-        self.directions = directions
+        self.direction = direction
 
     def sample(self):
         return np.random.choice(self.colors, size=(self.grid_size, self.grid_size))
 
     def execute(self, grid: np.ndarray) -> (np.ndarray, str):
         self.n = np.random.randint(1, self.grid_size // 2)
-        self.direction = np.random.choice(self.directions)
+
         new_grid = np.full(grid.shape, self.fill_color)
 
         if self.direction == "right":
@@ -3429,18 +3466,333 @@ This transformation demonstrates how a simple rule (alternating two colors) can 
 """
 
 
-# Create a directory to save images
-if not os.path.exists("task_images"):
-    os.makedirs("task_images")
+class SpiralGeneratorTask(GridTask):
+    def __init__(self, grid_size):
+        super().__init__()
+        self.grid_size = grid_size
+        self.colors = np.random.choice(range(1, 7), size=3, replace=False)
+
+    def sample(self):
+        grid = np.zeros((self.grid_size, self.grid_size), dtype=int)
+
+        # Place three random squares
+        for color in self.colors:
+            size = np.random.randint(2, max(3, self.grid_size // 4))
+            x = np.random.randint(0, self.grid_size - size)
+            y = np.random.randint(0, self.grid_size - size)
+            grid[x : x + size, y : y + size] = color
+
+        return grid
+
+    def execute(self, grid: np.ndarray) -> (np.ndarray, str):
+        new_grid = np.zeros((self.grid_size, self.grid_size), dtype=int)
+        center = self.grid_size // 2
+        x, y = center, center
+        dx, dy = 0, -1  # Start by moving up
+
+        # Sort colors based on the row index of their squares
+        color_rows = [
+            np.where(np.any(grid == color, axis=1))[0][0] for color in self.colors
+        ]
+        sorted_colors = [color for _, color in sorted(zip(color_rows, self.colors))]
+
+        for step in range(self.grid_size * self.grid_size):
+            if (0 <= x < self.grid_size) and (0 <= y < self.grid_size):
+                new_grid[y, x] = sorted_colors[step % 3]
+
+            if (
+                (x == y)
+                or (x < y and x + y == self.grid_size - 1)
+                or (x > y and x + y == self.grid_size)
+            ):
+                dx, dy = -dy, dx  # Rotate 90 degrees clockwise
+
+            x, y = x + dx, y + dy
+
+        description = self.generate_description(grid, new_grid)
+        pattern = self.generate_pattern_description()
+        return new_grid, f"{description}\n\n{pattern}"
+
+    def generate_description(
+        self, input_grid: np.ndarray, output_grid: np.ndarray
+    ) -> str:
+        def describe_grid(grid, grid_name):
+            unique, counts = np.unique(grid, return_counts=True)
+            color_counts = dict(zip(unique, counts))
+            total_cells = self.grid_size * self.grid_size
+
+            color_descriptions = []
+            for color in sorted(color_counts.keys()):
+                if color != 0:  # Exclude the background color
+                    percentage = (color_counts[color] / total_cells) * 100
+                    color_descriptions.append(
+                        f"{self.color_map[color]} ({color_counts[color]} cells, {percentage:.1f}%)"
+                    )
+
+            color_list = (
+                ", ".join(color_descriptions[:-1]) + f" and {color_descriptions[-1]}"
+                if len(color_descriptions) > 1
+                else color_descriptions[0]
+            )
+
+            if grid_name == "input grid":
+                return f"""Looking at the {grid_name}, we see a {self.grid_size}x{self.grid_size} square grid. 
+The grid contains three randomly positioned squares of different colors.
+The colors present are {color_list}.
+The colored cells occupy {np.sum(grid > 0)} cells ({(np.sum(grid > 0) / total_cells) * 100:.1f}% of the grid), 
+while the remaining {np.sum(grid == 0)} cells ({(np.sum(grid == 0) / total_cells) * 100:.1f}% of the grid) are black background."""
+            else:
+                return f"""Looking at the {grid_name}, we see a {self.grid_size}x{self.grid_size} square grid. 
+The grid is now filled with a spiral pattern using three colors: {color_list}.
+The spiral starts from the center and moves clockwise, using these colors in a repeating sequence.
+The entire grid is filled, with no black cells remaining."""
+
+        input_description = describe_grid(input_grid, "input grid")
+        output_description = describe_grid(output_grid, "output grid")
+
+        color_rows = [
+            np.where(np.any(input_grid == color, axis=1))[0][0] for color in self.colors
+        ]
+        sorted_colors = [color for _, color in sorted(zip(color_rows, self.colors))]
+
+        difference = f"""
+When comparing the input and output grids, we notice these key differences:
+
+1. The input grid had three randomly positioned squares of different colors, while the output grid is entirely filled with a spiral pattern.
+2. The three colors from the input grid ({', '.join([self.color_map[color] for color in sorted_colors])}) have been used to create the spiral pattern in the output grid.
+3. The spiral pattern starts from the center of the grid and moves clockwise, initially going upwards.
+4. The colors in the spiral follow the order of the squares in the input grid, from top to bottom.
+5. Every cell in the output grid is now colored, leaving no black background.
+6. The resulting pattern in the output grid is a continuous spiral that fills the entire grid.
+
+This transformation has taken the color information provided by the three squares in the input grid and used it to generate a complete spiral pattern, filling the entire grid in a specific order.
+"""
+
+        return f"{input_description}\n\n{output_description}\n\n{difference}"
+
+    @staticmethod
+    def generate_pattern_description() -> str:
+        return """
+After observing the changes between the input and output grids, we can describe the pattern of transformation as follows:
+
+1. Initial State:
+   - The input grid is a square grid containing three randomly positioned squares of different colors.
+
+2. Color Order Determination:
+   - The colors are ordered based on the vertical position of their respective squares in the input grid.
+   - The color of the topmost square is used first, followed by the middle, and then the bottom square.
+
+3. Spiral Initialization:
+   - The spiral pattern begins at the center of the grid.
+   - The initial direction is upward.
+
+4. Spiral Generation:
+   - The spiral moves clockwise, following this sequence of directions: up, right, down, left.
+   - At each step, a cell is filled with the next color in the sequence determined in step 2.
+   - The colors repeat in this order throughout the entire spiral.
+
+5. Direction Changes:
+   - The spiral changes direction when it reaches certain conditions:
+     a) When it hits the edge of the grid.
+     b) When it would overlap with an already filled part of the spiral.
+
+6. Grid Filling:
+   - The spiral continues until every cell in the grid has been filled.
+   - This ensures that the entire grid is covered with the spiral pattern.
+
+7. Color Distribution:
+   - Due to the nature of the spiral and the three-color sequence, each color will occupy approximately one-third of the grid.
+   - Small variations in color distribution may occur depending on the grid size.
+
+8. Resulting Pattern:
+   - The output grid shows a complete spiral pattern that starts from the center and expands to fill the entire grid.
+   - The pattern uses three colors in a repeating sequence, creating a visually striking spiral effect.
+
+This transformation demonstrates how simple rules (spiral movement and color sequencing) can create a complex and visually interesting pattern. It also shows how information from the input (color and position of squares) can be used to determine characteristics of the output pattern.
+"""
+
+
+class ShapeMoverTask(GridTask):
+    def __init__(self, grid_size, fixed_color, moving_color):
+        super().__init__()
+        self.grid_size = grid_size
+        self.fixed_color = fixed_color
+        self.moving_color = moving_color
+
+    def generate_shape(self, max_size):
+        size = np.random.randint(2, max_size + 1)
+        shape = np.zeros((size, size), dtype=int)
+        for i in range(size):
+            for j in range(size):
+                if np.random.rand() > 0.5:
+                    shape[i, j] = 1
+        return shape
+
+    def sample(self):
+        grid = np.zeros((self.grid_size, self.grid_size), dtype=int)
+
+        # Generate and place fixed shape
+        fixed_shape = self.generate_shape(self.grid_size // 3)
+        fixed_x = np.random.randint(0, self.grid_size - fixed_shape.shape[0])
+        fixed_y = np.random.randint(0, self.grid_size - fixed_shape.shape[1])
+        grid[
+            fixed_x : fixed_x + fixed_shape.shape[0],
+            fixed_y : fixed_y + fixed_shape.shape[1],
+        ] = (
+            fixed_shape * self.fixed_color
+        )
+
+        # Generate and place moving shape
+        moving_shape = self.generate_shape(self.grid_size // 3)
+        moving_x = np.random.randint(0, self.grid_size - moving_shape.shape[0])
+        moving_y = np.random.randint(0, self.grid_size - moving_shape.shape[1])
+
+        # Ensure shapes don't overlap initially
+        while np.any(
+            grid[
+                moving_x : moving_x + moving_shape.shape[0],
+                moving_y : moving_y + moving_shape.shape[1],
+            ]
+            > 0
+        ):
+            moving_x = np.random.randint(0, self.grid_size - moving_shape.shape[0])
+            moving_y = np.random.randint(0, self.grid_size - moving_shape.shape[1])
+
+        grid[
+            moving_x : moving_x + moving_shape.shape[0],
+            moving_y : moving_y + moving_shape.shape[1],
+        ] = (
+            moving_shape * self.moving_color
+        )
+
+        return grid
+
+    def execute(self, grid: np.ndarray) -> (np.ndarray, str):
+        fixed_coords = np.argwhere(grid == self.fixed_color)
+        moving_coords = np.argwhere(grid == self.moving_color)
+
+        fixed_center = np.mean(fixed_coords, axis=0)
+        moving_center = np.mean(moving_coords, axis=0)
+
+        direction = np.sign(fixed_center - moving_center).astype(int)
+
+        new_grid = np.copy(grid)
+
+        while not self.shapes_touching(new_grid):
+            temp_grid = np.zeros_like(new_grid)
+            for x, y in moving_coords:
+                new_x, new_y = x + direction[0], y + direction[1]
+                if 0 <= new_x < self.grid_size and 0 <= new_y < self.grid_size:
+                    temp_grid[new_x, new_y] = self.moving_color
+
+            if np.array_equal(temp_grid, new_grid):  # If no movement possible, break
+                break
+
+            new_grid[new_grid == self.moving_color] = 0
+            new_grid += temp_grid
+            moving_coords = np.argwhere(new_grid == self.moving_color)
+
+        description = self.generate_description(grid, new_grid)
+        pattern = self.generate_pattern_description()
+        return new_grid, f"{description}\n\n{pattern}"
+
+    def shapes_touching(self, grid):
+        fixed_coords = set(map(tuple, np.argwhere(grid == self.fixed_color)))
+        moving_coords = set(map(tuple, np.argwhere(grid == self.moving_color)))
+
+        for x, y in fixed_coords:
+            for dx, dy in [(0, 1), (1, 0), (0, -1), (-1, 0)]:
+                if (x + dx, y + dy) in moving_coords:
+                    return True
+        return False
+
+    def generate_description(
+        self, input_grid: np.ndarray, output_grid: np.ndarray
+    ) -> str:
+        def describe_grid(grid, grid_name):
+            unique, counts = np.unique(grid, return_counts=True)
+            color_counts = dict(zip(unique, counts))
+            total_cells = self.grid_size * self.grid_size
+
+            def describe_shape(color):
+                shape_cells = np.argwhere(grid == color)
+                min_row, min_col = shape_cells.min(axis=0)
+                max_row, max_col = shape_cells.max(axis=0)
+                height = max_row - min_row + 1
+                width = max_col - min_col + 1
+                area = color_counts[color]
+
+                shape_grid = grid[min_row : max_row + 1, min_col : max_col + 1]
+                shape_str = "\n".join(
+                    [
+                        "    " + ", ".join([str(int(cell == color)) for cell in row])
+                        for row in shape_grid
+                    ]
+                )
+
+                return f"""The {self.color_map[color]} shape:
+        Dimensions: {height}x{width} cells
+        Area: {area} cells ({(area / total_cells) * 100:.1f}% of the grid)
+        Top-left corner: ({min_row}, {min_col})
+        Shape:
+    {shape_str}"""
+
+            fixed_shape_desc = describe_shape(self.fixed_color)
+            moving_shape_desc = describe_shape(self.moving_color)
+
+            return f"""Looking at the {grid_name}, we see a {self.grid_size}x{self.grid_size} square grid. 
+    The grid contains two shapes of different colors:
+
+    1. {fixed_shape_desc}
+
+    2. {moving_shape_desc}
+
+    The colored cells occupy {np.sum(grid > 0)} cells ({(np.sum(grid > 0) / total_cells) * 100:.1f}% of the grid), 
+    while the remaining {np.sum(grid == 0)} cells ({(np.sum(grid == 0) / total_cells) * 100:.1f}% of the grid) are black background."""
+
+        input_description = describe_grid(input_grid, "input grid")
+        output_description = describe_grid(output_grid, "output grid")
+
+        def calculate_distance(grid):
+            fixed_cells = np.argwhere(grid == self.fixed_color)
+            moving_cells = np.argwhere(grid == self.moving_color)
+            distances = ((fixed_cells[:, None, :] - moving_cells[None, :, :]) ** 2).sum(
+                axis=-1
+            )
+            return np.sqrt(distances.min())
+
+        input_distance = calculate_distance(input_grid)
+        output_distance = calculate_distance(output_grid)
+
+        difference = f"""
+    When comparing the input and output grids, we notice these key differences:
+
+    1. The {self.color_map[self.fixed_color]} shape has remained in the same position in both grids.
+    2. The {self.color_map[self.moving_color]} shape has moved from its original position in the input grid.
+    3. In the input grid, the minimum distance between the shapes was approximately {input_distance:.2f} cells.
+    4. In the output grid, the {self.color_map[self.moving_color]} shape is now touching the {self.color_map[self.fixed_color]} shape, with a minimum distance of {output_distance:.2f} cells between them.
+    5. The movement of the {self.color_map[self.moving_color]} shape has been in a straight line towards the {self.color_map[self.fixed_color]} shape.
+    6. The shapes themselves have not changed in size or form, only the position of the {self.color_map[self.moving_color]} shape has changed.
+    7. The total number of colored cells remains the same, but their distribution in the grid has changed.
+
+    This transformation has moved one shape towards the other until they are touching, creating a new configuration of the two shapes in the grid.
+    """
+
+        return f"{input_description}\n\n{output_description}\n\n{difference}"
+
+
+# # Create a directory to save images
+# if not os.path.exists("task_images"):
+#     os.makedirs("task_images")
 
 # List of all tasks
 tasks = [
-    # ColorReplacementTask,
+    ColorReplacementTask,
     # ShiftGridTask,
     # DrawSquaresTask,
     # ChangeStrokeColorTask,
     # ChangeFillColorTask,
-    # CopyShapeWithPaddingTask,
+    # # CopyShapeWithPaddingTask,
     # PatternIntersectionUnionTask,
     # RotateShapeTask,
     # MoveShapeTask,
@@ -3454,8 +3806,8 @@ tasks = [
     # RainwaterTask,
     # BorderAdditionTask,
     # ShapeMergingTask,
-    # SimpleShapePatternFillingTask,
-    AddNoiseAndLinesTask
+    # # SimpleShapePatternFillingTask,
+    # AddNoiseAndLinesTask,
 ]
 
 import matplotlib.pyplot as plt
@@ -3463,68 +3815,68 @@ import matplotlib.colors as mcolors
 
 
 # Function to plot four tasks
-def plot_four_tasks(task_instances, heading="Task Comparisons"):
-    fig, axes = plt.subplots(4, 2, figsize=(12, 28))
-    fig.suptitle(heading, fontsize=20)
+# def plot_four_tasks(task_instances, heading="Task Comparisons"):
+#     fig, axes = plt.subplots(4, 2, figsize=(12, 28))
+#     fig.suptitle(heading, fontsize=20)
 
-    cmap = mcolors.ListedColormap(
-        ["black", "red", "green", "blue", "yellow", "purple", "orange"]
-    )
-    bounds = np.arange(8) - 0.5
-    norm = mcolors.BoundaryNorm(bounds, cmap.N)
+#     cmap = mcolors.ListedColormap(
+#         ["black", "red", "green", "blue", "yellow", "purple", "orange"]
+#     )
+#     bounds = np.arange(8) - 0.5
+#     norm = mcolors.BoundaryNorm(bounds, cmap.N)
 
-    for i, task in enumerate(task_instances):
-        attempt = 0
-        success = False
-        while attempt < 10 and not success:
-            try:
-                input_grid = task.sample()
-                if isinstance(input_grid, tuple):
-                    output_grid, instruction = task.execute(*input_grid)
-                else:
-                    output_grid, instruction = task.execute(input_grid)
-                success = True
-            except Exception as e:
-                attempt += 1
-                print(f"Error in {task.__class__.__name__} - Attempt {attempt}: {e}")
+#     for i, task in enumerate(task_instances):
+#         attempt = 0
+#         success = False
+#         while attempt < 10 and not success:
+#             try:
+#                 input_grid = task.sample()
+#                 if isinstance(input_grid, tuple):
+#                     output_grid, instruction = task.execute(*input_grid)
+#                 else:
+#                     output_grid, instruction = task.execute(input_grid)
+#                 success = True
+#             except Exception as e:
+#                 attempt += 1
+#                 print(f"Error in {task.__class__.__name__} - Attempt {attempt}: {e}")
 
-        if not success:
-            print(
-                f"Failed to generate grids for {task.__class__.__name__} after 10 attempts."
-            )
-            continue
+#         if not success:
+#             print(
+#                 f"Failed to generate grids for {task.__class__.__name__} after 10 attempts."
+#             )
+#             continue
 
-        def plot_grid(ax, grid, title):
-            cax = ax.imshow(grid, cmap=cmap, norm=norm)
-            ax.set_title(title)
-            ax.set_xticks(np.arange(-0.5, grid.shape[0], 1), minor=True)
-            ax.set_yticks(np.arange(-0.5, grid.shape[0], 1), minor=True)
-            ax.grid(which="minor", color="gray", linestyle="-", linewidth=0.5)
-            ax.tick_params(which="minor", size=0)
-            fig.colorbar(cax, ax=ax, boundaries=bounds, ticks=np.arange(7))
-            ax.set_xticks(np.arange(0, grid.shape[0], 1))
-            ax.set_yticks(np.arange(0, grid.shape[0], 1))
+#         def plot_grid(ax, grid, title):
+#             cax = ax.imshow(grid, cmap=cmap, norm=norm)
+#             ax.set_title(title)
+#             ax.set_xticks(np.arange(-0.5, grid.shape[0], 1), minor=True)
+#             ax.set_yticks(np.arange(-0.5, grid.shape[0], 1), minor=True)
+#             ax.grid(which="minor", color="gray", linestyle="-", linewidth=0.5)
+#             ax.tick_params(which="minor", size=0)
+#             fig.colorbar(cax, ax=ax, boundaries=bounds, ticks=np.arange(7))
+#             ax.set_xticks(np.arange(0, grid.shape[0], 1))
+#             ax.set_yticks(np.arange(0, grid.shape[0], 1))
 
-        plot_grid(
-            axes[i, 0],
-            input_grid if not isinstance(input_grid, tuple) else input_grid[0],
-            "Input Grid",
-        )
-        plot_grid(axes[i, 1], output_grid, "Output Grid")
+#         plot_grid(
+#             axes[i, 0],
+#             input_grid if not isinstance(input_grid, tuple) else input_grid[0],
+#             "Input Grid",
+#         )
+#         plot_grid(axes[i, 1], output_grid, "Output Grid")
 
-        # Add instruction text below the output grid
-        axes[i, 1].text(
-            0.5,
-            -0.15,
-            instruction,
-            ha="center",
-            va="top",
-            fontsize=12,
-            transform=axes[i, 1].transAxes,
-        )
+#         # Add instruction text below the output grid
+#         axes[i, 1].text(
+#             0.5,
+#             -0.15,
+#             instruction,
+#             ha="center",
+#             va="top",
+#             fontsize=12,
+#             transform=axes[i, 1].transAxes,
+#         )
 
-    plt.tight_layout(rect=[0, 0.05, 1, 0.96])
-    return fig
+#     plt.tight_layout(rect=[0, 0.05, 1, 0.96])
+#     return fig
 
 
 # # Loop over all tasks and save the plots
@@ -3535,106 +3887,110 @@ def plot_four_tasks(task_instances, heading="Task Comparisons"):
 #     fig.savefig(f"task_images/{task_name}_examples.png")
 #     plt.close(fig)
 
-import numpy as np
-import json
-import os
-import threading
-from queue import Queue
+
+# # Constants
+# NUM_EXAMPLES = 100
+# NUM_TASKS = len(tasks)
+# EXAMPLES_PER_TASK = NUM_EXAMPLES // NUM_TASKS
+# NUM_THREADS = 8
+
+# # Create a directory to save the JSONL file
+# output_dir = "task_examples"
+# if not os.path.exists(output_dir):
+#     os.makedirs(output_dir)
+
+# # File path for the output JSONL file
+# output_file = os.path.join(output_dir, "task_example_eval_red_linea.jsonl")
+
+# # Thread lock for file writing
+# file_lock = threading.Lock()
+# # set numpy seed
+# np.random.seed(12321)
 
 
-# Task classes definition goes here (use the previously provided code)
+# # Worker function for threading
+# def worker(task_cls, num_examples, thread_id):
+#     local_examples = []
+#     for _ in range(num_examples):
+#         task = task_cls()
+#         attempt = 0
+#         success = False
+#         while attempt < 10 and not success:
+#             try:
+#                 input_grid = task.sample()
+#                 if isinstance(input_grid, tuple):
+#                     output_grid, instruction = task.execute(*input_grid)
+#                 else:
+#                     output_grid, instruction = task.execute(input_grid)
+#                 success = True
+#             except Exception as e:
+#                 attempt += 1
+#                 print(f"Error in {task.__class__.__name__} - Attempt {attempt}: {e}")
 
-# Constants
-NUM_EXAMPLES = 100
-NUM_TASKS = len(tasks)
-EXAMPLES_PER_TASK = NUM_EXAMPLES // NUM_TASKS
-NUM_THREADS = 8
+#         if success:
+#             example = {
+#                 "input": (
+#                     input_grid.tolist()
+#                     if not isinstance(input_grid, tuple)
+#                     else input_grid[0].tolist()
+#                 ),
+#                 "output": output_grid.tolist(),
+#                 "instruction": instruction,
+#             }
 
-# Create a directory to save the JSONL file
-output_dir = "task_examples"
-if not os.path.exists(output_dir):
-    os.makedirs(output_dir)
+#             example["input"] = str(
+#                 ["".join([str(i) for i in row]) for row in example["input"]]
+#             )
+#             example["output"] = str(
+#                 ["".join([str(i) for i in row]) for row in example["output"]]
+#             )
+#             example["task"] = task.__class__.__name__
+#             local_examples.append(example)
 
-# File path for the output JSONL file
-output_file = os.path.join(output_dir, "task_example_eval_red_linea.jsonl")
-
-# Thread lock for file writing
-file_lock = threading.Lock()
-# set numpy seed
-np.random.seed(12321)
-
-
-# Worker function for threading
-def worker(task_cls, num_examples, thread_id):
-    local_examples = []
-    for _ in range(num_examples):
-        task = task_cls()
-        attempt = 0
-        success = False
-        while attempt < 10 and not success:
-            try:
-                input_grid = task.sample()
-                if isinstance(input_grid, tuple):
-                    output_grid, instruction = task.execute(*input_grid)
-                else:
-                    output_grid, instruction = task.execute(input_grid)
-                success = True
-            except Exception as e:
-                attempt += 1
-                print(f"Error in {task.__class__.__name__} - Attempt {attempt}: {e}")
-
-        if success:
-            example = {
-                "input": (
-                    input_grid.tolist()
-                    if not isinstance(input_grid, tuple)
-                    else input_grid[0].tolist()
-                ),
-                "output": output_grid.tolist(),
-                "instruction": instruction,
-            }
-
-            example["input"] = str(
-                ["".join([str(i) for i in row]) for row in example["input"]]
-            )
-            example["output"] = str(
-                ["".join([str(i) for i in row]) for row in example["output"]]
-            )
-            example["task"] = task.__class__.__name__
-            local_examples.append(example)
-
-    with file_lock:
-        with open(output_file, "a") as f:
-            for example in local_examples:
-                f.write(json.dumps(example) + "\n")
+#     with file_lock:
+#         with open(output_file, "a") as f:
+#             for example in local_examples:
+#                 f.write(json.dumps(example) + "\n")
 
 
-# Function to start and manage threads for a specific task
-def start_threads_for_task(task_cls, num_examples_per_thread):
-    threads = []
-    for thread_id in range(NUM_THREADS):
-        thread = threading.Thread(
-            target=worker, args=(task_cls, num_examples_per_thread, thread_id)
-        )
-        threads.append(thread)
-        thread.start()
+# # Function to start and manage threads for a specific task
+# def start_threads_for_task(task_cls, num_examples_per_thread):
+#     threads = []
+#     for thread_id in range(NUM_THREADS):
+#         thread = threading.Thread(
+#             target=worker, args=(task_cls, num_examples_per_thread, thread_id)
+#         )
+#         threads.append(thread)
+#         thread.start()
 
-    # Wait for all threads to finish
-    for thread in threads:
-        thread.join()
+#     # Wait for all threads to finish
+#     for thread in threads:
+#         thread.join()
 
 
-# Clear the output file if it exists
-if os.path.exists(output_file):
-    os.remove(output_file)
+# # Clear the output file if it exists
+# if os.path.exists(output_file):
+#     os.remove(output_file)
 
-# Loop over all tasks and start threads for each task
-for task_cls in tasks:
-    start_threads_for_task(task_cls, EXAMPLES_PER_TASK // NUM_THREADS)
+# # Loop over all tasks and start threads for each task
+# for task_cls in tasks:
+#     start_threads_for_task(task_cls, EXAMPLES_PER_TASK // NUM_THREADS)
 
-# shuffle the lines in the file
-lines = open(output_file).readlines()
-np.random.shuffle(lines)
-open(output_file, "w").writelines(lines)
+# # shuffle the lines in the file
+# lines = open(output_file).readlines()
+# np.random.shuffle(lines)
+# open(output_file, "w").writelines(lines)
 
-print(f"Generated examples and saved to {output_file}")
+# print(f"Generated examples and saved to {output_file}")
+
+for i in range(4):
+    grid_size = np.random.randint(8, 13)
+    colors = np.random.choice(range(1, 7), size=3, replace=False)
+    fill_color = np.random.choice(range(1, 7))
+    direction = np.random.choice(["up", "down", "left", "right"])
+    task = ShiftGridTask(grid_size, colors, fill_color, direction)
+    input_grid = task.sample()
+    output_grid, instruction = task.execute(input_grid)
+    print(instruction)
+
+    task.visualize(input_grid, output_grid, instruction)
