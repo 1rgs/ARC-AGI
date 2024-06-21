@@ -317,14 +317,12 @@ This transformation results in a grid that looks similar to the input, but with 
 
 
 class ShiftGridTask(GridTask):
-    def __init__(self):
+    def __init__(self, grid_size, colors, fill_color, directions):
         super().__init__()
-        self.grid_size = np.random.randint(MIN_GRID_SIZE, MAX_GRID_SIZE + 1)
-        self.colors = np.random.choice(
-            list(range(1, 7)), size=np.random.randint(2, 7), replace=False
-        )
-        self.fill_color = np.random.choice(list(range(1, 7)))
-        self.directions = ["up", "down", "left", "right"]
+        self.grid_size = grid_size
+        self.colors = colors
+        self.fill_color = fill_color
+        self.directions = directions
 
     def sample(self):
         return np.random.choice(self.colors, size=(self.grid_size, self.grid_size))
@@ -553,13 +551,11 @@ This pattern effectively performs a targeted color substitution within the grid,
 
 
 class ChangeStrokeColorTask(GridTask):
-    def __init__(self):
+    def __init__(self, grid_size, colors, num_squares):
         super().__init__()
-        self.grid_size = np.random.randint(MIN_GRID_SIZE, MAX_GRID_SIZE + 1)
-        self.colors = np.random.choice(
-            list(range(1, 7)), size=np.random.randint(2, 7), replace=False
-        )
-        self.num_squares = np.random.randint(1, 4)
+        self.grid_size = grid_size
+        self.colors = colors
+        self.num_squares = num_squares
 
     def sample(self):
         grid = np.zeros((self.grid_size, self.grid_size), dtype=int)
@@ -3328,6 +3324,108 @@ After observing the changes between the input and output grids, we can describe 
    - This creates a focal point that draws attention to the center of the grid.
 
 This transformation effectively takes a single point of color and expands it into a small area, creating a simple yet noticeable change in the grid's appearance. It demonstrates a basic growth or expansion pattern emanating from a central point.
+"""
+
+
+import numpy as np
+
+
+class CheckerboardCreatorTask(GridTask):
+    def __init__(self, grid_size):
+        super().__init__()
+        self.grid_size = grid_size
+        self.color1, self.color2 = np.random.choice(range(1, 7), size=2, replace=False)
+
+    def sample(self):
+        grid = np.zeros((self.grid_size, self.grid_size), dtype=int)
+        grid[0, 0] = self.color1
+        grid[0, 1] = self.color2
+        return grid
+
+    def execute(self, grid: np.ndarray) -> (np.ndarray, str):
+        new_grid = np.zeros((self.grid_size, self.grid_size), dtype=int)
+        new_grid[::2, ::2] = self.color1
+        new_grid[1::2, 1::2] = self.color1
+        new_grid[1::2, ::2] = self.color2
+        new_grid[::2, 1::2] = self.color2
+
+        description = self.generate_description(grid, new_grid)
+        pattern = self.generate_pattern_description()
+        return new_grid, f"{description}\n\n{pattern}"
+
+    def generate_description(
+        self, input_grid: np.ndarray, output_grid: np.ndarray
+    ) -> str:
+        def describe_grid(grid, grid_name):
+            if grid_name == "input grid":
+                return f"""Looking at the {grid_name}, we see a {self.grid_size}x{self.grid_size} square grid. 
+The grid is entirely black except for two colored cells in the top-left corner.
+The cell at (0, 0) is {self.color_map[self.color1]}, and the cell at (0, 1) is {self.color_map[self.color2]}.
+These two colored cells seem to be providing information about the colors to be used in the checkerboard pattern.
+The rest of the grid is black, waiting to be filled with the checkerboard pattern."""
+            else:
+                total_cells = self.grid_size * self.grid_size
+                color1_cells = np.sum(grid == self.color1)
+                color2_cells = np.sum(grid == self.color2)
+                return f"""Looking at the {grid_name}, we see a {self.grid_size}x{self.grid_size} square grid. 
+The grid is now filled with a checkerboard pattern using {self.color_map[self.color1]} and {self.color_map[self.color2]}.
+{self.color_map[self.color1]} occupies {color1_cells} cells ({(color1_cells / total_cells) * 100:.1f}% of the grid).
+{self.color_map[self.color2]} occupies {color2_cells} cells ({(color2_cells / total_cells) * 100:.1f}% of the grid).
+The pattern alternates these colors in both rows and columns, creating the classic checkerboard look."""
+
+        input_description = describe_grid(input_grid, "input grid")
+        output_description = describe_grid(output_grid, "output grid")
+
+        difference = f"""
+When comparing the input and output grids, we notice these key differences:
+
+1. The input grid had only two colored cells in the top-left corner, while the output grid is entirely filled with a pattern.
+2. The two colors from the top-left corner of the input grid ({self.color_map[self.color1]} and {self.color_map[self.color2]}) have been used to create a checkerboard pattern across the entire output grid.
+3. The pattern in the output grid alternates these two colors in both rows and columns.
+4. Every cell that was black in the input grid has now been filled with either {self.color_map[self.color1]} or {self.color_map[self.color2]}.
+5. The resulting pattern in the output grid is symmetrical and uniform, with each color appearing in equal amounts (or differing by one cell if the grid size is odd).
+
+This transformation has taken the color information provided in two cells of the input grid and used it to generate a complete checkerboard pattern, filling the entire grid.
+"""
+
+        return f"{input_description}\n\n{output_description}\n\n{difference}"
+
+    @staticmethod
+    def generate_pattern_description() -> str:
+        return """
+After observing the changes between the input and output grids, we can describe the pattern of transformation as follows:
+
+1. Initial State:
+   - The input grid is a square grid with two colored cells in the top-left corner.
+   - These cells provide the two colors to be used in the checkerboard pattern.
+
+2. Pattern Generation:
+   - The transformation fills the entire grid with a checkerboard pattern using these two colors.
+   - Starting from the top-left corner, the colors alternate in both rows and columns.
+
+3. Color Placement Rules:
+   - Cells with even row and column indices (0-based) are filled with the first color.
+   - Cells with odd row and even column indices are filled with the second color.
+   - Cells with even row and odd column indices are filled with the second color.
+   - Cells with odd row and column indices are filled with the first color.
+
+4. Consistency:
+   - This pattern is applied uniformly across the entire grid, regardless of its size.
+   - The alternation of colors is consistent in both horizontal and vertical directions.
+
+5. Edge Consideration:
+   - The pattern works for both even and odd grid sizes without any special adjustments.
+   - In odd-sized grids, one color will appear once more than the other.
+
+6. Color Distribution:
+   - In even-sized grids, both colors appear exactly the same number of times.
+   - In odd-sized grids, one color appears in one more cell than the other.
+
+7. Resulting Pattern:
+   - The output grid shows a perfect checkerboard pattern with the two colors alternating in both directions.
+   - This creates a visually striking pattern that is immediately recognizable as a checkerboard.
+
+This transformation demonstrates how a simple rule (alternating two colors) can be applied systematically to create a complex and visually appealing pattern across an entire grid. It also shows how minimal input information (two colored cells) can be used to generate a complete and predictable output pattern.
 """
 
 
