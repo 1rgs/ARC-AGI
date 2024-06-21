@@ -201,7 +201,7 @@ class GridTask(ABC):
         pass
 
     @abstractmethod
-    def generate_pattern_description(self) -> str:
+    def generate_pattern_description() -> str:
         """
         Generate a general description of the transformation pattern.
 
@@ -3240,7 +3240,96 @@ This transformation effectively converts a simple arrangement of overlapping col
         return new_grid, f"{description}\n\n{pattern}"
 
 
-import os
+class ColorExpansionTask(GridTask):
+    def __init__(self, grid_size, center_color):
+        super().__init__()
+        self.grid_size = grid_size
+        self.center_color = center_color
+
+    def sample(self):
+        grid = np.zeros((self.grid_size, self.grid_size), dtype=int)
+        center = self.grid_size // 2
+        grid[center, center] = self.center_color
+        return grid
+
+    def execute(self, grid: np.ndarray) -> (np.ndarray, str):
+        new_grid = np.copy(grid)
+        center = self.grid_size // 2
+
+        for i in range(max(0, center - 1), min(self.grid_size, center + 2)):
+            for j in range(max(0, center - 1), min(self.grid_size, center + 2)):
+                new_grid[i, j] = self.center_color
+
+        description = self.generate_description(grid, new_grid)
+        pattern = self.generate_pattern_description()
+        return new_grid, f"{description}\n\n{pattern}"
+
+    def generate_description(
+        self, input_grid: np.ndarray, output_grid: np.ndarray
+    ) -> str:
+        def describe_grid(grid, grid_name):
+            center = self.grid_size // 2
+            if grid_name == "input grid":
+                return f"""Looking at the {grid_name}, we see a {self.grid_size}x{self.grid_size} square grid. 
+The grid is entirely black except for a single {self.color_map[self.center_color]} cell located exactly in the center at position ({center}, {center}).
+This creates a stark contrast, with one colorful point against a black background."""
+            else:
+                colored_cells = np.sum(grid > 0)
+                total_cells = self.grid_size * self.grid_size
+                return f"""Looking at the {grid_name}, we see a {self.grid_size}x{self.grid_size} square grid. 
+The grid now has a {self.color_map[self.center_color]} square in the center, occupying 9 cells (or fewer if near the grid edge).
+These colored cells make up {colored_cells} cells ({(colored_cells / total_cells) * 100:.1f}% of the grid), 
+while the remaining {total_cells - colored_cells} cells ({((total_cells - colored_cells) / total_cells) * 100:.1f}% of the grid) are still black background."""
+
+        input_description = describe_grid(input_grid, "input grid")
+        output_description = describe_grid(output_grid, "output grid")
+
+        difference = f"""
+When comparing the input and output grids, we notice these key differences:
+
+1. The single {self.color_map[self.center_color]} cell in the center of the input grid has expanded into a 3x3 square in the output grid.
+2. This expansion has occurred equally in all directions: up, down, left, and right from the original cell.
+3. The number of {self.color_map[self.center_color]} cells has increased from 1 to 9 (or fewer if the center was near the grid edge).
+4. The rest of the grid, outside this central square, remains unchanged and black.
+5. The overall effect is like a small {self.color_map[self.center_color]} bloom appearing in the center of the grid.
+
+This transformation has taken a single point of color and expanded it into a small square, creating a more noticeable central feature in the grid.
+"""
+
+        return f"{input_description}\n\n{output_description}\n\n{difference}"
+
+    def generate_pattern_description(self) -> str:
+        return f"""
+After observing the changes between the input and output grids, we can describe the pattern of transformation as follows:
+
+1. Initial State:
+   - The input grid is a {self.grid_size}x{self.grid_size} square with a single {self.color_map[self.center_color]} cell in the exact center.
+
+2. Color Expansion:
+   - The {self.color_map[self.center_color]} color expands outward from the center cell.
+   - It spreads equally in all four directions: up, down, left, and right.
+
+3. Expansion Limit:
+   - The color expands by exactly one cell in each direction.
+   - This results in a 3x3 square of {self.color_map[self.center_color]} cells, centered on the original cell.
+
+4. Edge Consideration:
+   - If the center cell is near the edge of the grid, the expansion might be limited by the grid boundaries.
+   - In such cases, the resulting colored area would be smaller than 3x3.
+
+5. Background Preservation:
+   - All cells not affected by the expansion remain their original color (black).
+
+6. Consistency:
+   - The expansion is applied uniformly, creating a symmetrical pattern around the center.
+
+7. Resulting Pattern:
+   - The output grid shows a small {self.color_map[self.center_color]} square (up to 3x3) in the center of the grid.
+   - This creates a focal point that draws attention to the center of the grid.
+
+This transformation effectively takes a single point of color and expands it into a small area, creating a simple yet noticeable change in the grid's appearance. It demonstrates a basic growth or expansion pattern emanating from a central point.
+"""
+
 
 # Create a directory to save images
 if not os.path.exists("task_images"):
