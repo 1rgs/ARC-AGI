@@ -2125,322 +2125,746 @@ This transformation results in a grid that preserves the original noise pattern 
 """
 
 
-# class RainwaterTask(GridTask):
-#     def __init__(self):
-#         super().__init__()
-#         self.grid_size = np.random.randint(
-#             max(3, MIN_GRID_SIZE), MAX_GRID_SIZE + 1
-#         )  # Ensure grid_size is at least 3
-#         self.max_column_height = self.grid_size // 2
-#         self.water_color = 3  # Set the rainwater color to blue
-#         self.column_color = np.random.choice(range(1, 7))
-#         while self.column_color == self.water_color:
-#             self.column_color = np.random.choice(range(1, 7))
+class RainwaterTask(GridTask):
+    def __init__(self, grid_size, max_column_height, column_color, water_color):
+        super().__init__()
+        self.grid_size = grid_size
+        self.max_column_height = max_column_height
+        self.column_color = column_color
+        self.water_color = water_color
 
-#     def sample(self):
-#         grid = np.zeros((self.grid_size, self.grid_size), dtype=int)
-#         num_columns = np.random.randint(3, self.grid_size) if self.grid_size > 3 else 3
-#         for _ in range(num_columns):
-#             height = np.random.randint(1, self.max_column_height + 1)
-#             col = np.random.randint(0, self.grid_size)
-#             grid[-height:, col] = self.column_color
-#         # fill last row
-#         grid[-1, :] = self.column_color
-#         return grid
+    def sample(self):
+        grid = np.zeros((self.grid_size, self.grid_size), dtype=int)
+        num_columns = np.random.randint(3, self.grid_size)
+        for _ in range(num_columns):
+            height = np.random.randint(1, self.max_column_height + 1)
+            col = np.random.randint(0, self.grid_size)
+            grid[-height:, col] = self.column_color
+        # fill last row
+        grid[-1, :] = self.column_color
+        return grid
 
-#     def execute(self, grid: np.ndarray) -> (np.ndarray, str):
-#         new_grid = np.copy(grid)
-#         column_heights = np.zeros(self.grid_size, dtype=int)
+    def execute(self, grid: np.ndarray) -> (np.ndarray, str):
+        new_grid = np.copy(grid)
+        column_heights = np.zeros(self.grid_size, dtype=int)
 
-#         for col in range(self.grid_size):
-#             if np.any(grid[:, col] == self.column_color):
-#                 column_heights[col] = self.grid_size - np.argmax(
-#                     grid[:, col] == self.column_color
-#                 )
+        for col in range(self.grid_size):
+            if np.any(grid[:, col] == self.column_color):
+                column_heights[col] = self.grid_size - np.argmax(
+                    grid[:, col] == self.column_color
+                )
 
-#         for col in range(1, self.grid_size - 1):
-#             left_max = max(column_heights[:col])
-#             right_max = max(column_heights[col + 1 :])
-#             if column_heights[col] < left_max and column_heights[col] < right_max:
-#                 fill_height = min(left_max, right_max) - column_heights[col]
-#                 new_grid[
-#                     -column_heights[col] - fill_height : -column_heights[col], col
-#                 ] = self.water_color
+        for col in range(1, self.grid_size - 1):
+            left_max = max(column_heights[:col])
+            right_max = max(column_heights[col + 1 :])
+            if column_heights[col] < left_max and column_heights[col] < right_max:
+                fill_height = min(left_max, right_max) - column_heights[col]
+                new_grid[
+                    -column_heights[col] - fill_height : -column_heights[col], col
+                ] = self.water_color
 
-#         instruction = f"Fill the gaps between columns with rainwater color {self.color_map[self.water_color]}."
-#         return new_grid, instruction
+        description = self.generate_description(grid, new_grid)
+        pattern = self.generate_pattern_description()
+        return new_grid, f"{description}\n\n{pattern}"
 
+    def generate_description(
+        self, input_grid: np.ndarray, output_grid: np.ndarray
+    ) -> str:
+        def describe_grid(grid, grid_name):
+            unique, counts = np.unique(grid, return_counts=True)
+            color_counts = dict(zip(unique, counts))
+            total_cells = self.grid_size * self.grid_size
 
-# class BorderAdditionTask(GridTask):
-#     def __init__(self):
-#         super().__init__()
-#         self.grid_size = np.random.randint(MIN_GRID_SIZE, MAX_GRID_SIZE + 1)
-#         self.num_shapes = np.random.randint(1, 9)
-#         self.colors = np.random.choice(range(1, 7), self.num_shapes, replace=True)
-#         self.border_color = np.random.choice(range(1, 7))
+            color_descriptions = []
+            for color in sorted(color_counts.keys()):
+                if color != 0:  # Exclude the background color
+                    percentage = (color_counts[color] / total_cells) * 100
+                    color_descriptions.append(
+                        f"{self.color_map[color]} ({color_counts[color]} cells, {percentage:.1f}%)"
+                    )
 
-#     def sample(self):
-#         grid = np.zeros((self.grid_size, self.grid_size), dtype=int)
-#         for color in self.colors:
-#             shape = generate_shape(self.grid_size, self.grid_size // 4)
-#             shape[shape == 1] = color
-#             grid = np.maximum(grid, shape)
-#         return grid
+            color_list = (
+                ", ".join(color_descriptions[:-1]) + f" and {color_descriptions[-1]}"
+                if len(color_descriptions) > 1
+                else color_descriptions[0]
+            )
 
-#     def execute(self, grid: np.ndarray) -> (np.ndarray, str):
-#         new_grid = np.copy(grid)
-#         border_color = self.border_color
+            return f"""Looking at the {grid_name}, we see a {self.grid_size}x{self.grid_size} square grid. 
+The grid has a black background, which takes up most of the space.
+There are {self.color_map[self.column_color]} cells arranged in vertical columns of varying heights.
+Interestingly, the bottom row is completely filled with {self.color_map[self.column_color]} cells.
+The colors present in this grid are {color_list}.
+The colored cells occupy {np.sum(grid > 0)} cells ({(np.sum(grid > 0) / total_cells) * 100:.1f}% of the grid), 
+while the remaining {np.sum(grid == 0)} cells ({(np.sum(grid == 0) / total_cells) * 100:.1f}% of the grid) are black background.
+This arrangement of columns on a solid base reminds me of a simplified terrain or cityscape."""
 
-#         # Find all exterior cells using flood fill
-#         exterior = np.zeros_like(grid, dtype=bool)
+        input_description = describe_grid(input_grid, "input grid")
+        output_description = describe_grid(output_grid, "output grid")
 
-#         def flood_fill(x, y):
-#             stack = [(x, y)]
-#             while stack:
-#                 cx, cy = stack.pop()
-#                 if cx < 0 or cx >= self.grid_size or cy < 0 or cy >= self.grid_size:
-#                     continue
-#                 if exterior[cx, cy] or grid[cx, cy] > 0:
-#                     continue
-#                 exterior[cx, cy] = True
-#                 for dx, dy in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
-#                     stack.append((cx + dx, cy + dy))
+        water_cells = np.sum(output_grid == self.water_color)
+        total_cells = self.grid_size * self.grid_size
+        water_percentage = (water_cells / total_cells) * 100
 
-#         for i in range(self.grid_size):
-#             if grid[i, 0] == 0:
-#                 flood_fill(i, 0)
-#             if grid[i, self.grid_size - 1] == 0:
-#                 flood_fill(i, self.grid_size - 1)
-#         for j in range(self.grid_size):
-#             if grid[0, j] == 0:
-#                 flood_fill(0, j)
-#             if grid[self.grid_size - 1, j] == 0:
-#                 flood_fill(self.grid_size - 1, j)
+        difference = f"""
+When comparing the input and output grids, we notice several key differences:
 
-#         # Add border around shapes by checking exterior cells
-#         for i in range(self.grid_size):
-#             for j in range(self.grid_size):
-#                 if grid[i, j] > 0:
-#                     for dx, dy in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
-#                         ni, nj = i + dx, j + dy
-#                         if (
-#                             0 <= ni < self.grid_size
-#                             and 0 <= nj < self.grid_size
-#                             and exterior[ni, nj]
-#                         ):
-#                             new_grid[ni, nj] = border_color
+1. The most striking change is the appearance of {self.color_map[self.water_color]} cells in the output grid. These weren't present in the input grid.
+2. These new {self.color_map[self.water_color]} cells seem to be located in the spaces between the {self.color_map[self.column_color]} columns.
+3. The {self.color_map[self.water_color]} cells don't fill all the spaces between columns. Instead, they only partially fill these gaps.
+4. It appears that the height of the {self.color_map[self.water_color]} cells in each gap is related to the heights of the adjacent columns.
+5. Specifically, {water_cells} cells ({water_percentage:.1f}% of the grid) have been filled with this new {self.color_map[self.water_color]} color.
+6. The original {self.color_map[self.column_color]} columns and the black background remain unchanged from the input to the output grid.
+7. The overall pattern has changed from just columns to columns with something filling the spaces between them, but only up to certain heights.
 
-#         instruction = (
-#             f"Add a border of {self.color_map[border_color]} around all shapes."
-#         )
-#         return new_grid, instruction
+Given these observations, it seems like the transformation is simulating some kind of filling process between the columns, possibly representing the accumulation of a liquid like water between terrain features.
+"""
 
+        return f"{input_description}\n\n{output_description}\n\n{difference}"
 
-# class ShapeMergingTask(GridTask):
-#     def __init__(self):
-#         super().__init__()
-#         self.grid_size = np.random.randint(MIN_GRID_SIZE, MAX_GRID_SIZE + 1)
-#         self.num_shapes = np.random.randint(2, 10)
-#         self.colors = np.random.choice(range(1, 7), self.num_shapes, replace=True)
-#         self.merged_color = np.random.choice(range(1, 7))
+    def generate_pattern_description(self) -> str:
+        return f"""
+After observing the changes between the input and output grids, we can describe the pattern of transformation as follows:
 
-#     def sample(self):
-#         grid = np.zeros((self.grid_size, self.grid_size), dtype=int)
-#         for color in self.colors:
-#             shape = generate_shape(self.grid_size, self.grid_size // 4)
-#             shape[shape == 1] = color
-#             grid = np.maximum(grid, shape)
-#         return grid
+1. Grid Structure:
+   - We start with a {self.grid_size}x{self.grid_size} grid.
+   - The grid contains vertical columns of {self.color_map[self.column_color]} cells.
+   - These columns have varying heights, but none exceed {self.max_column_height} cells.
+   - The bottom row is always filled with {self.color_map[self.column_color]} cells, forming a base.
 
-#     def execute(self, grid: np.ndarray) -> (np.ndarray, str):
-#         new_grid = np.copy(grid)
-#         merged_color = self.merged_color
+2. New Element Introduction:
+   - In the output grid, we see the introduction of {self.color_map[self.water_color]} cells.
+   - These new cells appear only in the spaces between the existing {self.color_map[self.column_color]} columns.
 
-#         # Function to perform DFS and find connected components
-#         def dfs(x, y, original_color):
-#             stack = [(x, y)]
-#             shape_coords = []
-#             while stack:
-#                 cx, cy = stack.pop()
-#                 if (
-#                     (cx, cy) in visited
-#                     or cx < 0
-#                     or cx >= self.grid_size
-#                     or cy < 0
-#                     or cy >= self.grid_size
-#                 ):
-#                     continue
-#                 if grid[cx, cy] == original_color:
-#                     visited.add((cx, cy))
-#                     shape_coords.append((cx, cy))
-#                     stack.extend(
-#                         [(cx - 1, cy), (cx + 1, cy), (cx, cy - 1), (cx, cy + 1)]
-#                     )
-#             return shape_coords
+3. Fill Pattern:
+   - The {self.color_map[self.water_color]} cells don't completely fill the gaps between columns.
+   - Instead, they fill these gaps partially, up to a certain height.
+   - This height seems to be determined by the columns on either side of the gap.
 
-#         visited = set()
-#         for i in range(self.grid_size):
-#             for j in range(self.grid_size):
-#                 if grid[i, j] > 0 and (i, j) not in visited:
-#                     shape_coords = dfs(i, j, grid[i, j])
-#                     for x, y in shape_coords:
-#                         new_grid[x, y] = merged_color
+4. Height Determination:
+   - For each gap, the fill height appears to be related to the shorter of the two adjacent columns.
+   - The {self.color_map[self.water_color]} cells never overflow the shorter column.
 
-#         instruction = f"Merge all overlapping shapes into a single shape of {self.color_map[merged_color]}."
-#         return new_grid, instruction
+5. Column Preservation:
+   - The original {self.color_map[self.column_color]} columns remain unchanged in the transformation.
+   - The {self.color_map[self.water_color]} cells are only added to the empty spaces, never replacing existing column cells.
+
+6. Resulting Pattern:
+   - The output grid shows a pattern that looks like {self.color_map[self.column_color]} terrain with {self.color_map[self.water_color]} liquid trapped between the elevations.
+
+Given these observations, we can infer that this transformation is likely simulating the accumulation of a liquid (probably water, given the color) between columns of varying heights. This could represent rainwater or flood water collecting in a landscape with different elevations.
+
+The pattern effectively transforms a "dry" terrain into one where water has accumulated in the low-lying areas between higher points, but only up to the level of the lowest surrounding "barrier".
+"""
 
 
-# class SimpleShapePatternFillingTask(GridTask):
-#     def __init__(self):
-#         super().__init__()
-#         self.n = np.random.randint(2, 6)  # Size of the small pattern
-#         self.tile_size = np.random.randint(3, 6)  # How many times to tile the pattern
-#         self.grid_size = self.n * self.tile_size  # Size of the larger grid
-#         self.pattern_color = np.random.choice(range(1, 7))
-#         self.background_color = 0
-#         self.pattern_type = "cross" if np.random.rand() < 0.5 else "X"
-#         self.pattern = self.generate_pattern()
+class BorderAdditionTask(GridTask):
+    def __init__(self, grid_size, num_shapes, colors, border_color):
+        super().__init__()
+        self.grid_size = grid_size
+        self.num_shapes = num_shapes
+        self.colors = colors
+        self.border_color = border_color
 
-#     def generate_pattern(self):
-#         pattern = np.zeros((self.n, self.n), dtype=int)
-#         if self.pattern_type == "cross":
-#             center = self.n // 2
-#             pattern[center, :] = self.pattern_color
-#             pattern[:, center] = self.pattern_color
-#         else:  # X pattern
-#             for i in range(self.n):
-#                 pattern[i, i] = self.pattern_color
-#                 pattern[i, self.n - i - 1] = self.pattern_color
-#         return pattern
+    def sample(self):
+        grid = np.zeros((self.grid_size, self.grid_size), dtype=int)
+        for color in self.colors:
+            shape = generate_shape(self.grid_size, self.grid_size // 4)
+            shape[shape == 1] = color
+            grid = np.maximum(grid, shape)
+        return grid
 
-#     def sample(self):
-#         grid = np.tile(self.pattern, (self.tile_size, self.tile_size))
-#         self.final_grid = np.copy(grid)
-#         self.chunk_size = np.random.randint(3, min(self.grid_size // 2, 6) + 1)
-#         self.start_x = np.random.randint(0, self.grid_size - self.chunk_size + 1)
-#         self.start_y = np.random.randint(0, self.grid_size - self.chunk_size + 1)
-#         grid[
-#             self.start_x : self.start_x + self.chunk_size,
-#             self.start_y : self.start_y + self.chunk_size,
-#         ] = self.background_color
-#         return grid
+    def execute(self, grid: np.ndarray) -> (np.ndarray, str):
+        new_grid = np.copy(grid)
 
-#     def execute(self, grid: np.ndarray) -> (np.ndarray, str):
-#         description = self.generate_description(grid, self.final_grid)
-#         pattern = self.generate_pattern_description()
-#         return self.final_grid, f"{description}\n\n{pattern}"
+        # Find all exterior cells using flood fill
+        exterior = np.zeros_like(grid, dtype=bool)
 
-#     def generate_description(
-#         self, input_grid: np.ndarray, output_grid: np.ndarray
-#     ) -> str:
-#         pattern_str = self.pattern_to_string(self.pattern)
-#         color_name = self.color_map[self.pattern_color]
+        def flood_fill(x, y):
+            stack = [(x, y)]
+            while stack:
+                cx, cy = stack.pop()
+                if cx < 0 or cx >= self.grid_size or cy < 0 or cy >= self.grid_size:
+                    continue
+                if exterior[cx, cy] or grid[cx, cy] > 0:
+                    continue
+                exterior[cx, cy] = True
+                for dx, dy in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
+                    stack.append((cx + dx, cy + dy))
 
-#         input_description = f"""
-# The input grid is a {self.grid_size}x{self.grid_size} square containing a repeating pattern of {color_name} shapes on a black background. The basic unit of the pattern is:
+        for i in range(self.grid_size):
+            if grid[i, 0] == 0:
+                flood_fill(i, 0)
+            if grid[i, self.grid_size - 1] == 0:
+                flood_fill(i, self.grid_size - 1)
+        for j in range(self.grid_size):
+            if grid[0, j] == 0:
+                flood_fill(0, j)
+            if grid[self.grid_size - 1, j] == 0:
+                flood_fill(self.grid_size - 1, j)
 
-# {pattern_str}
+        # Add border around shapes by checking exterior cells
+        for i in range(self.grid_size):
+            for j in range(self.grid_size):
+                if grid[i, j] > 0:
+                    for dx, dy in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
+                        ni, nj = i + dx, j + dy
+                        if (
+                            0 <= ni < self.grid_size
+                            and 0 <= nj < self.grid_size
+                            and exterior[ni, nj]
+                        ):
+                            new_grid[ni, nj] = self.border_color
 
-# This {self.n}x{self.n} pattern is repeated {self.tile_size} times both horizontally and vertically.
-# However, there's a noticeable {self.chunk_size}x{self.chunk_size} black square in the grid, starting at position ({self.start_x}, {self.start_y}). This square appears to be missing the pattern that should be there.
-# """
+        description = self.generate_description(grid, new_grid)
+        pattern = self.generate_pattern_description()
+        return new_grid, f"{description}\n\n{pattern}"
 
-#         output_description = f"""
-# The output grid is also a {self.grid_size}x{self.grid_size} square with the same repeating pattern of {color_name} shapes on a black background.
-# The key difference is that the pattern now extends across the entire grid without any interruptions or missing sections.
-# """
+    def generate_description(
+        self, input_grid: np.ndarray, output_grid: np.ndarray
+    ) -> str:
+        def describe_grid(grid, grid_name):
+            unique, counts = np.unique(grid, return_counts=True)
+            color_counts = dict(zip(unique, counts))
+            total_cells = self.grid_size * self.grid_size
 
-#         difference = f"""
-# The main difference between the input and output grids is the filled-in section:
-# - In the input grid, there's a {self.chunk_size}x{self.chunk_size} black square at ({self.start_x}, {self.start_y}).
-# - In the output grid, this square has been filled with the continuing pattern, seamlessly blending with the surrounding design.
-# - The rest of the grid remains unchanged between input and output.
+            color_descriptions = []
+            for color in sorted(color_counts.keys()):
+                if color != 0:  # Exclude the background color
+                    percentage = (color_counts[color] / total_cells) * 100
+                    color_descriptions.append(
+                        f"{self.color_map[color]} ({color_counts[color]} cells, {percentage:.1f}%)"
+                    )
 
-# This change affects {self.chunk_size * self.chunk_size} cells, which is {(self.chunk_size * self.chunk_size / (self.grid_size * self.grid_size) * 100):.1f}% of the total grid.
-# """
+            color_list = (
+                ", ".join(color_descriptions[:-1]) + f" and {color_descriptions[-1]}"
+                if len(color_descriptions) > 1
+                else color_descriptions[0]
+            )
 
-#         return f"{input_description}\n\n{output_description}\n\n{difference}"
+            return f"""Looking at the {grid_name}, we see a {self.grid_size}x{self.grid_size} square grid. 
+The grid has a black background, which forms the majority of the space.
+There are {self.num_shapes} distinct colored shape{'s' if self.num_shapes > 1 else ''} on this background.
+The colors present in this grid are {color_list}.
+The colored cells occupy {np.sum(grid > 0)} cells ({(np.sum(grid > 0) / total_cells) * 100:.1f}% of the grid), 
+while the remaining {np.sum(grid == 0)} cells ({(np.sum(grid == 0) / total_cells) * 100:.1f}% of the grid) are black background.
+The shapes appear to be randomly positioned and have irregular forms."""
 
-#     def generate_pattern_description(self) -> str:
-#         return f"""
-# The pattern that transforms the input grid to the output grid involves completing a repeating geometric design. Here's a general description of this pattern:
+        input_description = describe_grid(input_grid, "input grid")
+        output_description = describe_grid(output_grid, "output grid")
 
-# 1. Pattern Identification:
-#    The grid contains a repeating pattern of {self.color_map[self.pattern_color]} {self.pattern_type}-shaped designs on a black background.
-#    Each basic unit of the pattern is a {self.n}x{self.n} square.
+        border_cells = np.sum(output_grid == self.border_color)
+        total_cells = self.grid_size * self.grid_size
+        border_percentage = (border_cells / total_cells) * 100
 
-# 2. Missing Section Identification:
-#    A {self.chunk_size}x{self.chunk_size} section of the grid is identified where the pattern is missing, appearing as a solid black square.
+        difference = f"""
+When comparing the input and output grids, we notice several key differences:
 
-# 3. Pattern Continuation:
-#    The transformation involves extending the existing pattern into the missing area:
-#    - The pattern seamlessly extends from the edges of the missing area inward.
-#    - Where the missing area intersects with a unit of the pattern, that unit is partially filled to maintain continuity.
-#    - The extended pattern aligns perfectly with the surrounding existing pattern.
+1. The most noticeable change is the appearance of {self.color_map[self.border_color]} cells in the output grid. These weren't present in the input grid.
+2. These new {self.color_map[self.border_color]} cells seem to be located around the edges of the existing shapes.
+3. The {self.color_map[self.border_color]} cells form a continuous line around each shape, like an outline or border.
+4. The original shapes remain intact, with their colors and positions unchanged.
+5. Specifically, {border_cells} cells ({border_percentage:.1f}% of the grid) have been filled with this new {self.color_map[self.border_color]} color.
+6. The black background cells that aren't adjacent to any shape remain unchanged.
+7. The overall pattern has changed from distinct shapes to shapes with a clear border around them.
 
-# 4. Color Consistency:
-#    The color used to fill in the missing pattern ({self.color_map[self.pattern_color]}) matches the color used in the rest of the grid.
+Given these observations, it appears that the transformation is adding a border or outline to each shape in the grid, using a consistent color for all borders.
+"""
 
-# 5. Complete Grid:
-#    Once the transformation is complete, the final output appears as one cohesive, uninterrupted design.
-#    The previously missing section becomes indistinguishable from the rest of the pattern.
+        return f"{input_description}\n\n{output_description}\n\n{difference}"
 
-# This pattern transformation essentially 'repairs' the grid by restoring the missing section of the repeating geometric pattern, creating a uniform and continuous design across the entire grid.
-# """
+    def generate_pattern_description(self) -> str:
+        return f"""
+After carefully observing the changes between the input and output grids, we can describe the pattern of transformation as follows:
+
+1. Grid Structure:
+   - We start with a {self.grid_size}x{self.grid_size} grid.
+   - The grid contains {self.num_shapes} colored shape{'s' if self.num_shapes > 1 else ''} on a black background.
+   - These shapes have irregular forms and are randomly positioned.
+
+2. New Element Introduction:
+   - In the output grid, we see the introduction of {self.color_map[self.border_color]} cells.
+   - These new cells appear only around the edges of the existing shapes.
+
+3. Border Pattern:
+   - The {self.color_map[self.border_color]} cells form a continuous line around each shape.
+   - This line is exactly one cell thick.
+   - The border follows the contours of each shape precisely.
+
+4. Border Placement:
+   - The border is added to the cells that are adjacent to the shape cells.
+   - It's placed in the black background cells that touch the shape, not on top of the shape itself.
+   - This means the border is always outside the original shape.
+
+5. Shape Preservation:
+   - The original shapes remain completely unchanged in the transformation.
+   - Their colors, sizes, and positions are maintained.
+
+6. Consistent Border Color:
+   - All borders, regardless of the shape they surround, use the same {self.color_map[self.border_color]} color.
+
+7. Resulting Pattern:
+   - The output grid shows the original shapes, now each surrounded by a {self.color_map[self.border_color]} border.
+   - This creates a clear visual separation between the shapes and the background.
+
+Given these observations, we can infer that this transformation is adding a border or outline to each shape in the grid. This border helps to define the shapes more clearly and separate them from the background.
+
+The pattern effectively transforms a grid of distinct shapes into one where each shape is highlighted by a surrounding border, enhancing the visual definition of the shapes within the grid.
+"""
+
+    def generate_pattern_description(self) -> str:
+        return f"""
+After carefully observing the changes between the input and output grids, we can describe the pattern of transformation as follows:
+
+1. Grid Structure:
+   - We start with a {self.grid_size}x{self.grid_size} grid.
+   - The grid contains {self.num_shapes} colored shape{'s' if self.num_shapes > 1 else ''} on a black background.
+   - These shapes have irregular forms and are randomly positioned.
+
+2. New Element Introduction:
+   - In the output grid, we see the introduction of {self.color_map[self.border_color]} cells.
+   - These new cells appear only around the edges of the existing shapes.
+
+3. Border Pattern:
+   - The {self.color_map[self.border_color]} cells form a continuous line around each shape.
+   - This line is exactly one cell thick.
+   - The border follows the contours of each shape precisely.
+
+4. Border Placement:
+   - The border is added to the cells that are adjacent to the shape cells.
+   - It's placed in the black background cells that touch the shape, not on top of the shape itself.
+   - This means the border is always outside the original shape.
+
+5. Shape Preservation:
+   - The original shapes remain completely unchanged in the transformation.
+   - Their colors, sizes, and positions are maintained.
+
+6. Consistent Border Color:
+   - All borders, regardless of the shape they surround, use the same {self.color_map[self.border_color]} color.
+
+7. Resulting Pattern:
+   - The output grid shows the original shapes, now each surrounded by a {self.color_map[self.border_color]} border.
+   - This creates a clear visual separation between the shapes and the background.
+
+Given these observations, we can infer that this transformation is adding a border or outline to each shape in the grid. This border helps to define the shapes more clearly and separate them from the background.
+
+The pattern effectively transforms a grid of distinct shapes into one where each shape is highlighted by a surrounding border, enhancing the visual definition of the shapes within the grid.
+"""
 
 
-# class AddNoiseAndLinesTask(GridTask):
-#     def __init__(self):
-#         super().__init__()
-#         self.grid_size = np.random.randint(MIN_GRID_SIZE, MAX_GRID_SIZE + 1)
-#         self.noise_level = 0.05  # Percentage of noise cells
-#         self.num_lines = np.random.randint(2, 6)
-#         self.line_color = 1  # Red
-#         self.new_line_color = 2  # Green
+class ShapeMergingTask(GridTask):
+    def __init__(self, grid_size, num_shapes, colors, merged_color):
+        super().__init__()
+        self.grid_size = grid_size
+        self.num_shapes = num_shapes
+        self.colors = colors
+        self.merged_color = merged_color
 
-#     def sample(self):
-#         grid = np.zeros((self.grid_size, self.grid_size), dtype=int)
+    def sample(self):
+        grid = np.zeros((self.grid_size, self.grid_size), dtype=int)
+        for color in self.colors:
+            shape = generate_shape(self.grid_size, self.grid_size // 4)
+            shape[shape == 1] = color
+            grid = np.maximum(grid, shape)
+        return grid
 
-#         # Add noise
-#         num_noise_cells = int(self.noise_level * self.grid_size * self.grid_size)
-#         for _ in range(num_noise_cells):
-#             x, y = np.random.randint(0, self.grid_size, 2)
-#             noise_color = np.random.choice(range(3, 7))
-#             grid[x, y] = noise_color
+    def execute(self, grid: np.ndarray) -> (np.ndarray, str):
+        new_grid = np.copy(grid)
 
-#         # Ensure at least one column padding between lines
-#         available_columns = list(range(0, self.grid_size, 2))
-#         np.random.shuffle(available_columns)
-#         line_positions = available_columns[: self.num_lines]
-#         line_positions.sort()
+        # Function to perform DFS and find connected components
+        def dfs(x, y, original_color):
+            stack = [(x, y)]
+            shape_coords = []
+            while stack:
+                cx, cy = stack.pop()
+                if (
+                    (cx, cy) in visited
+                    or cx < 0
+                    or cx >= self.grid_size
+                    or cy < 0
+                    or cy >= self.grid_size
+                ):
+                    continue
+                if grid[cx, cy] == original_color:
+                    visited.add((cx, cy))
+                    shape_coords.append((cx, cy))
+                    stack.extend(
+                        [(cx - 1, cy), (cx + 1, cy), (cx, cy - 1), (cx, cy + 1)]
+                    )
+            return shape_coords
 
-#         for start_col in line_positions:
-#             if start_col < self.grid_size - 1:
-#                 start_row = np.random.randint(0, self.grid_size - 1)
-#                 grid[start_row, start_col] = self.line_color
-#                 grid[start_row + 1, start_col] = self.line_color
+        visited = set()
+        for i in range(self.grid_size):
+            for j in range(self.grid_size):
+                if grid[i, j] > 0 and (i, j) not in visited:
+                    shape_coords = dfs(i, j, grid[i, j])
+                    for x, y in shape_coords:
+                        new_grid[x, y] = self.merged_color
 
-#         return grid
+        description = self.generate_description(grid, new_grid)
+        pattern = self.generate_pattern_description()
+        return new_grid, f"{description}\n\n{pattern}"
 
-#     def execute(self, grid: np.ndarray) -> (np.ndarray, str):
-#         new_grid = np.copy(grid)
+    def generate_description(
+        self, input_grid: np.ndarray, output_grid: np.ndarray
+    ) -> str:
+        def describe_grid(grid, grid_name):
+            unique, counts = np.unique(grid, return_counts=True)
+            color_counts = dict(zip(unique, counts))
+            total_cells = self.grid_size * self.grid_size
 
-#         for row in range(self.grid_size - 1):
-#             for col in range(self.grid_size):
-#                 if (
-#                     grid[row, col] == self.line_color
-#                     and grid[row + 1, col] == self.line_color
-#                 ):
-#                     new_grid[row, col] = 0
-#                     new_grid[row + 1, col] = 0
-#                     new_grid[row, col] = self.new_line_color
-#                     if col + 1 < self.grid_size:
-#                         new_grid[row, col + 1] = self.new_line_color
+            color_descriptions = []
+            for color in sorted(color_counts.keys()):
+                if color != 0:  # Exclude the background color
+                    percentage = (color_counts[color] / total_cells) * 100
+                    color_descriptions.append(
+                        f"{self.color_map[color]} ({color_counts[color]} cells, {percentage:.1f}%)"
+                    )
 
-#         instruction = f"""Turn all vertical color 1 lines of height 2 to horizontal color 2 lines of length 2.
-#         So if there is a line of color 1 at position (i, j) and (i+1, j), replace them with color 2 at (i, j) and (i, j+1).
-#         with the pivot at the top-left corner of the line. The top-left corner of the line should remain unchanged."""
-#         return new_grid, instruction
+            color_list = (
+                ", ".join(color_descriptions[:-1]) + f" and {color_descriptions[-1]}"
+                if len(color_descriptions) > 1
+                else color_descriptions[0]
+            )
+
+            return f"""Looking at the {grid_name}, we see a {self.grid_size}x{self.grid_size} square grid. 
+The grid has a black background, which forms the majority of the space.
+There are colored cells forming various shapes on this background.
+The colors present in this grid are {color_list}.
+The colored cells occupy {np.sum(grid > 0)} cells ({(np.sum(grid > 0) / total_cells) * 100:.1f}% of the grid), 
+while the remaining {np.sum(grid == 0)} cells ({(np.sum(grid == 0) / total_cells) * 100:.1f}% of the grid) are black background.
+The shapes appear to be randomly positioned and have irregular forms. Some shapes might be overlapping or touching each other."""
+
+        input_description = describe_grid(input_grid, "input grid")
+        output_description = describe_grid(output_grid, "output grid")
+
+        merged_cells = np.sum(output_grid == self.merged_color)
+        total_cells = self.grid_size * self.grid_size
+        merged_percentage = (merged_cells / total_cells) * 100
+
+        difference = f"""
+When comparing the input and output grids, we notice several key differences:
+
+1. The most striking change is that all the colored cells in the output grid are now {self.color_map[self.merged_color]}.
+2. The original variety of colors seen in the input grid has been replaced by a single color.
+3. The overall shape formed by the colored cells seems to be preserved, but now it's all one color.
+4. The black background cells remain unchanged.
+5. Specifically, {merged_cells} cells ({merged_percentage:.1f}% of the grid) are now {self.color_map[self.merged_color]}.
+6. The boundaries between different colored shapes in the input grid are no longer visible in the output grid.
+7. Any gaps or separations between shapes of the same color in the input grid are still present in the output grid.
+
+Given these observations, it appears that the transformation is merging all the colored shapes into a single color, while maintaining their overall structure and position in the grid.
+"""
+
+        return f"{input_description}\n\n{output_description}\n\n{difference}"
+
+    def generate_pattern_description(self) -> str:
+        return f"""
+After carefully observing the changes between the input and output grids, we can describe the pattern of transformation as follows:
+
+1. Grid Structure:
+   - We start with a {self.grid_size}x{self.grid_size} grid.
+   - The input grid contains multiple shapes of various colors on a black background.
+   - These shapes have irregular forms and are randomly positioned, with some possibly overlapping or touching.
+
+2. Color Unification:
+   - In the output grid, all colored cells have been changed to a single color: {self.color_map[self.merged_color]}.
+   - This color change affects all non-black cells, regardless of their original color.
+
+3. Shape Preservation:
+   - The overall structure and position of the shapes remain unchanged.
+   - The boundaries of the shapes, where they meet the black background, are maintained.
+
+4. Merging Effect:
+   - Where different colored shapes were touching or overlapping in the input grid, they now appear as a single, continuous shape in the output grid.
+   - However, any gaps or separations between shapes of the same color in the input grid are still present in the output grid.
+
+5. Background Preservation:
+   - The black background cells remain unchanged in their position and color.
+
+6. Loss of Internal Boundaries:
+   - Any internal boundaries between touching shapes of different colors in the input grid are no longer visible in the output grid.
+
+7. Resulting Pattern:
+   - The output grid shows what appears to be a single, complex shape (or multiple disconnected shapes) all in {self.color_map[self.merged_color]}.
+   - This creates a unified visual entity from what were previously distinct colored shapes.
+
+Given these observations, we can infer that this transformation is merging all colored shapes into a single color entity. This process unifies the visual appearance of the shapes while maintaining their overall structure and position within the grid.
+
+The pattern effectively transforms a grid with multiple, distinctly colored shapes into one where all these shapes are visually unified by a single color, potentially creating new, larger composite shapes in the process.
+"""
+
+
+class ShapeMergingTask(GridTask):
+    def __init__(self, grid_size, num_shapes, colors, merged_color):
+        super().__init__()
+        self.grid_size = grid_size
+        self.num_shapes = num_shapes
+        self.colors = colors
+        self.merged_color = merged_color
+
+    def sample(self):
+        grid = np.zeros((self.grid_size, self.grid_size), dtype=int)
+        for color in self.colors:
+            shape = generate_shape(self.grid_size, self.grid_size // 4)
+            shape[shape == 1] = color
+            grid = np.maximum(grid, shape)
+        return grid
+
+    def execute(self, grid: np.ndarray) -> (np.ndarray, str):
+        new_grid = np.copy(grid)
+
+        # Function to perform DFS and find connected components
+        def dfs(x, y, original_color):
+            stack = [(x, y)]
+            shape_coords = []
+            while stack:
+                cx, cy = stack.pop()
+                if (
+                    (cx, cy) in visited
+                    or cx < 0
+                    or cx >= self.grid_size
+                    or cy < 0
+                    or cy >= self.grid_size
+                ):
+                    continue
+                if grid[cx, cy] == original_color:
+                    visited.add((cx, cy))
+                    shape_coords.append((cx, cy))
+                    stack.extend(
+                        [(cx - 1, cy), (cx + 1, cy), (cx, cy - 1), (cx, cy + 1)]
+                    )
+            return shape_coords
+
+        visited = set()
+        for i in range(self.grid_size):
+            for j in range(self.grid_size):
+                if grid[i, j] > 0 and (i, j) not in visited:
+                    shape_coords = dfs(i, j, grid[i, j])
+                    for x, y in shape_coords:
+                        new_grid[x, y] = self.merged_color
+
+        description = self.generate_description(grid, new_grid)
+        pattern = self.generate_pattern_description()
+        return new_grid, f"{description}\n\n{pattern}"
+
+    def generate_description(
+        self, input_grid: np.ndarray, output_grid: np.ndarray
+    ) -> str:
+        def describe_grid(grid, grid_name):
+            unique, counts = np.unique(grid, return_counts=True)
+            color_counts = dict(zip(unique, counts))
+            total_cells = self.grid_size * self.grid_size
+
+            color_descriptions = []
+            for color in sorted(color_counts.keys()):
+                if color != 0:  # Exclude the background color
+                    percentage = (color_counts[color] / total_cells) * 100
+                    color_descriptions.append(
+                        f"{self.color_map[color]} ({color_counts[color]} cells, {percentage:.1f}%)"
+                    )
+
+            color_list = (
+                ", ".join(color_descriptions[:-1]) + f" and {color_descriptions[-1]}"
+                if len(color_descriptions) > 1
+                else color_descriptions[0]
+            )
+
+            return f"""Looking at the {grid_name}, we see a {self.grid_size}x{self.grid_size} square grid. 
+The grid has a black background, which forms the majority of the space.
+There are colored cells forming various shapes on this background.
+The colors present in this grid are {color_list}.
+The colored cells occupy {np.sum(grid > 0)} cells ({(np.sum(grid > 0) / total_cells) * 100:.1f}% of the grid), 
+while the remaining {np.sum(grid == 0)} cells ({(np.sum(grid == 0) / total_cells) * 100:.1f}% of the grid) are black background.
+The shapes appear to be randomly positioned and have irregular forms. Some shapes might be overlapping or touching each other."""
+
+        input_description = describe_grid(input_grid, "input grid")
+        output_description = describe_grid(output_grid, "output grid")
+
+        merged_cells = np.sum(output_grid == self.merged_color)
+        total_cells = self.grid_size * self.grid_size
+        merged_percentage = (merged_cells / total_cells) * 100
+
+        difference = f"""
+When comparing the input and output grids, we notice several key differences:
+
+1. The most striking change is that all the colored cells in the output grid are now {self.color_map[self.merged_color]}.
+2. The original variety of colors seen in the input grid has been replaced by a single color.
+3. The overall shape formed by the colored cells seems to be preserved, but now it's all one color.
+4. The black background cells remain unchanged.
+5. Specifically, {merged_cells} cells ({merged_percentage:.1f}% of the grid) are now {self.color_map[self.merged_color]}.
+6. The boundaries between different colored shapes in the input grid are no longer visible in the output grid.
+7. Any gaps or separations between shapes of the same color in the input grid are still present in the output grid.
+
+Given these observations, it appears that the transformation is merging all the colored shapes into a single color, while maintaining their overall structure and position in the grid.
+"""
+
+        return f"{input_description}\n\n{output_description}\n\n{difference}"
+
+    def generate_pattern_description(self) -> str:
+        return f"""
+After carefully observing the changes between the input and output grids, we can describe the pattern of transformation as follows:
+
+1. Grid Structure:
+   - We start with a {self.grid_size}x{self.grid_size} grid.
+   - The input grid contains multiple shapes of various colors on a black background.
+   - These shapes have irregular forms and are randomly positioned, with some possibly overlapping or touching.
+
+2. Color Unification:
+   - In the output grid, all colored cells have been changed to a single color: {self.color_map[self.merged_color]}.
+   - This color change affects all non-black cells, regardless of their original color.
+
+3. Shape Preservation:
+   - The overall structure and position of the shapes remain unchanged.
+   - The boundaries of the shapes, where they meet the black background, are maintained.
+
+4. Merging Effect:
+   - Where different colored shapes were touching or overlapping in the input grid, they now appear as a single, continuous shape in the output grid.
+   - However, any gaps or separations between shapes of the same color in the input grid are still present in the output grid.
+
+5. Background Preservation:
+   - The black background cells remain unchanged in their position and color.
+
+6. Loss of Internal Boundaries:
+   - Any internal boundaries between touching shapes of different colors in the input grid are no longer visible in the output grid.
+
+7. Resulting Pattern:
+   - The output grid shows what appears to be a single, complex shape (or multiple disconnected shapes) all in {self.color_map[self.merged_color]}.
+   - This creates a unified visual entity from what were previously distinct colored shapes.
+
+Given these observations, we can infer that this transformation is merging all colored shapes into a single color entity. This process unifies the visual appearance of the shapes while maintaining their overall structure and position within the grid.
+
+The pattern effectively transforms a grid with multiple, distinctly colored shapes into one where all these shapes are visually unified by a single color, potentially creating new, larger composite shapes in the process.
+"""
+
+
+class AddNoiseAndLinesTask(GridTask):
+    def __init__(self, grid_size, noise_level, num_lines, line_color, new_line_color):
+        super().__init__()
+        self.grid_size = grid_size
+        self.noise_level = noise_level
+        self.num_lines = num_lines
+        self.line_color = line_color
+        self.new_line_color = new_line_color
+
+    def sample(self):
+        grid = np.zeros((self.grid_size, self.grid_size), dtype=int)
+
+        # Add noise
+        num_noise_cells = int(self.noise_level * self.grid_size * self.grid_size)
+        for _ in range(num_noise_cells):
+            x, y = np.random.randint(0, self.grid_size, 2)
+            noise_color = np.random.choice(range(3, 7))
+            grid[x, y] = noise_color
+
+        # Ensure at least one column padding between lines
+        available_columns = list(range(0, self.grid_size, 2))
+        np.random.shuffle(available_columns)
+        line_positions = available_columns[: self.num_lines]
+        line_positions.sort()
+
+        for start_col in line_positions:
+            if start_col < self.grid_size - 1:
+                start_row = np.random.randint(0, self.grid_size - 1)
+                grid[start_row, start_col] = self.line_color
+                grid[start_row + 1, start_col] = self.line_color
+
+        return grid
+
+    def execute(self, grid: np.ndarray) -> (np.ndarray, str):
+        new_grid = np.copy(grid)
+
+        for row in range(self.grid_size - 1):
+            for col in range(self.grid_size):
+                if grid[row, col] == self.line_color and grid[row + 1, col] == self.line_color:
+                    new_grid[row, col] = self.new_line_color
+                    new_grid[row + 1, col] = 0
+                    if col + 1 < self.grid_size:
+                        new_grid[row, col + 1] = self.new_line_color
+
+        description = self.generate_description(grid, new_grid)
+        pattern = self.generate_pattern_description()
+        return new_grid, f"{description}\n\n{pattern}"
+
+    def generate_description(self, input_grid: np.ndarray, output_grid: np.ndarray) -> str:
+        def describe_grid(grid, grid_name):
+            unique, counts = np.unique(grid, return_counts=True)
+            color_counts = dict(zip(unique, counts))
+            total_cells = self.grid_size * self.grid_size
+
+            color_descriptions = []
+            for color in sorted(color_counts.keys()):
+                if color != 0:  # Exclude the background color
+                    percentage = (color_counts[color] / total_cells) * 100
+                    color_descriptions.append(f"{self.color_map[color]} ({color_counts[color]} cells, {percentage:.1f}%)")
+
+            color_list = ", ".join(color_descriptions[:-1]) + f" and {color_descriptions[-1]}" if len(color_descriptions) > 1 else color_descriptions[0]
+
+            return f"""Looking at the {grid_name}, we see a {self.grid_size}x{self.grid_size} square grid. 
+The grid has a black background, which forms the majority of the space.
+There are colored cells scattered throughout the grid, which appear to be of two types:
+1. Random single cells of various colors, which look like noise.
+2. Short vertical lines of {self.color_map[self.line_color]} color, each consisting of two cells.
+The colors present in this grid are {color_list}.
+The colored cells occupy {np.sum(grid > 0)} cells ({(np.sum(grid > 0) / total_cells) * 100:.1f}% of the grid), 
+while the remaining {np.sum(grid == 0)} cells ({(np.sum(grid == 0) / total_cells) * 100:.1f}% of the grid) are black background."""
+
+        input_description = describe_grid(input_grid, "input grid")
+        output_description = describe_grid(output_grid, "output grid")
+
+        difference = f"""
+When comparing the input and output grids, we notice several key differences:
+
+1. The most noticeable change is that the short vertical {self.color_map[self.line_color]} lines in the input grid have been replaced by short horizontal {self.color_map[self.new_line_color]} lines in the output grid.
+2. Each vertical line of two {self.color_map[self.line_color]} cells has been transformed into a horizontal line of two {self.color_map[self.new_line_color]} cells.
+3. The transformation seems to pivot around the top cell of each vertical line:
+   - The top cell changes from {self.color_map[self.line_color]} to {self.color_map[self.new_line_color]}.
+   - The bottom cell of the vertical line becomes black (empty).
+   - A new {self.color_map[self.new_line_color]} cell appears to the right of the top cell.
+4. The random colored noise cells remain unchanged in both position and color.
+5. The total number of {self.color_map[self.line_color]} cells in the input grid equals the total number of {self.color_map[self.new_line_color]} cells in the output grid.
+6. The overall distribution of colored cells has shifted slightly due to this transformation.
+
+This transformation appears to be rotating and changing the color of specific line segments in the grid, while leaving other elements untouched.
+"""
+
+        return f"{input_description}\n\n{output_description}\n\n{difference}"
+
+    def generate_pattern_description(self) -> str:
+        return f"""
+After carefully observing the changes between the input and output grids, we can describe the pattern of transformation as follows:
+
+1. Grid Structure:
+   - We start with a {self.grid_size}x{self.grid_size} grid.
+   - The grid contains random noise of various colors and short vertical lines of a specific color.
+
+2. Noise Preservation:
+   - All random colored noise cells remain unchanged in both position and color.
+
+3. Line Transformation:
+   - The transformation focuses on the short vertical lines of {self.color_map[self.line_color]} color.
+   - Each vertical line, consisting of two cells (top and bottom), is changed in the following way:
+     a. The top cell changes color from {self.color_map[self.line_color]} to {self.color_map[self.new_line_color]}.
+     b. The bottom cell becomes black (empty).
+     c. A new {self.color_map[self.new_line_color]} cell is added to the right of the top cell.
+
+4. Rotation Effect:
+   - This transformation effectively rotates each vertical line 90 degrees clockwise.
+   - The pivot point for this rotation is the top-left corner of the original vertical line.
+
+5. Color Change:
+   - Along with the rotation, the color of the line changes from {self.color_map[self.line_color]} to {self.color_map[self.new_line_color]}.
+
+6. Consistent Application:
+   - This pattern is applied consistently to all vertical {self.color_map[self.line_color]} lines in the grid.
+
+7. Spatial Consideration:
+   - If a vertical line is at the right edge of the grid, the transformation might result in the right cell of the new horizontal line being cut off.
+
+8. Resulting Pattern:
+   - The output grid shows the same random noise as the input, but with short horizontal {self.color_map[self.new_line_color]} lines replacing the original vertical {self.color_map[self.line_color]} lines.
+
+This transformation effectively rotates and recolors specific elements of the grid while maintaining its overall structure and noise distribution. It creates a subtle but noticeable change in the pattern of the grid, shifting from vertical to horizontal line segments amidst the background noise.
+"""
 
 
 import os
