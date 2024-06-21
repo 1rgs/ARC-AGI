@@ -1212,149 +1212,144 @@ This transformation results in a grid that contains the same elements as the inp
 """
 
 
-class MoveShapeTask(GridTask):
-    def __init__(
-        self, grid_size, num_shapes, colors, shape_size, move_color, n, direction, mode
-    ):
-        super().__init__()
-        self.grid_size = grid_size
-        self.num_shapes = num_shapes
-        self.colors = colors
-        self.shape_size = shape_size
-        self.move_color = move_color
-        self.n = n
-        self.direction = direction
-        self.mode = mode
+# todo: fix below, input or output grids are compleletey empty in many cases
+# class MoveShapeTask(GridTask):
+#     def __init__(
+#         self, grid_size, num_shapes, colors, shape_size, move_color, n, direction, mode
+#     ):
+#         super().__init__()
+#         self.grid_size = grid_size
+#         self.num_shapes = num_shapes
+#         self.colors = colors
+#         self.shape_size = shape_size
+#         self.move_color = move_color
+#         self.n = n
+#         self.direction = direction
+#         self.mode = mode
 
-    def sample(self):
-        grid = np.zeros((self.grid_size, self.grid_size), dtype=int)
-        for color in self.colors:
-            shape = generate_shape(self.grid_size, self.shape_size)
-            shape[shape == 1] = color
-            grid = np.maximum(grid, shape)
-        return grid
+#     def sample(self):
+#         grid = np.zeros((self.grid_size, self.grid_size), dtype=int)
+#         for color in self.colors:
+#             shape = generate_shape(self.grid_size, self.shape_size)
+#             shape[shape == 1] = color
+#             grid = np.maximum(grid, shape)
+#         return grid
 
-    def execute(self, grid: np.ndarray) -> (np.ndarray, str):
-        new_grid = np.zeros((self.grid_size, self.grid_size), dtype=int)
+#     def execute(self, grid: np.ndarray) -> (np.ndarray, str):
+#         new_grid = np.zeros((self.grid_size, self.grid_size), dtype=int)
 
-        if self.mode == "move-and-copy":
-            for other_color in self.colors:
-                if other_color != self.move_color:
-                    new_grid[grid == other_color] = other_color
+#         if self.mode == "move-and-copy":
+#             for other_color in self.colors:
+#                 if other_color != self.move_color:
+#                     new_grid[grid == other_color] = other_color
 
-        def move_shape(new_grid, old_grid, color, n, direction):
-            positions = np.argwhere(old_grid == color)
-            if direction == "right":
-                for i, j in positions:
-                    new_j = min(j + n, self.grid_size - 1)
-                    new_grid[i, new_j] = color
-            elif direction == "left":
-                for i, j in positions:
-                    new_j = max(j - n, 0)
-                    new_grid[i, new_j] = color
-            elif direction == "bottom":
-                for i, j in positions:
-                    new_i = min(i + n, self.grid_size - 1)
-                    new_grid[new_i, j] = color
-            elif direction == "top":
-                for i, j in positions:
-                    new_i = max(i - n, 0)
-                    new_grid[new_i, j] = color
-            elif direction == "top-right":
-                for i, j in positions:
-                    new_i = max(i - n, 0)
-                    new_j = min(j + n, self.grid_size - 1)
-                    new_grid[new_i, new_j] = color
-            elif direction == "top-left":
-                for i, j in positions:
-                    new_i = max(i - n, 0)
-                    new_j = max(j - n, 0)
-                    new_grid[new_i, new_j] = color
-            elif direction == "bottom-right":
-                for i, j in positions:
-                    new_i = min(i + n, self.grid_size - 1)
-                    new_j = min(j + n, self.grid_size - 1)
-                    new_grid[new_i, new_j] = color
-            elif direction == "bottom-left":
-                for i, j in positions:
-                    new_i = min(i + n, self.grid_size - 1)
-                    new_j = max(j - n, 0)
-                    new_grid[new_i, new_j] = color
+#         def move_shape(new_grid, old_grid, color, n, direction):
+#             positions = np.argwhere(old_grid == color)
+#             if direction == "right":
+#                 for i, j in positions:
+#                     new_j = min(j + n, self.grid_size - 1)
+#                     new_grid[i, new_j] = color
+#             elif direction == "left":
+#                 for i, j in positions:
+#                     new_j = max(j - n, 0)
+#                     new_grid[i, new_j] = color
+#             elif direction == "bottom":
+#                 for i, j in positions:
+#                     new_i = min(i + n, self.grid_size - 1)
+#                     new_grid[new_i, j] = color
+#             elif direction == "top":
+#                 for i, j in positions:
+#                     new_i = max(i - n, 0)
+#                     new_grid[new_i, j] = color
+#             elif direction == "top-right":
+#                 for i, j in positions:
+#                     new_i = max(i - n, 0)
+#                     new_j = min(j + n, self.grid_size - 1)
+#                     new_grid[new_i, new_j] = color
+#             elif direction == "top-left":
+#                 for i, j in positions:
+#                     new_i = max(i - n, 0)
+#                     new_j = max(j - n, 0)
+#                     new_grid[new_i, new_j] = color
+#             elif direction == "bottom-right":
+#                 for i, j in positions:
+#                     new_i = min(i + n, self.grid_size - 1)
+#                     new_j = min(j + n, self.grid_size - 1)
+#                     new_grid[new_i, new_j] = color
+#             elif direction == "bottom-left":
+#                 for i, j in positions:
+#                     new_i = min(i + n, self.grid_size - 1)
+#                     new_j = max(j - n, 0)
+#                     new_grid[new_i, new_j] = color
 
-        move_shape(new_grid, grid, self.move_color, self.n, self.direction)
+#         move_shape(new_grid, grid, self.move_color, self.n, self.direction)
 
-        description = self.generate_description(grid, new_grid)
-        pattern = self.generate_pattern_description()
-        return new_grid, f"{description}\n\n{pattern}"
+#         description = self.generate_description(grid, new_grid)
+#         pattern = self.generate_pattern_description()
+#         return new_grid, f"{description}\n\n{pattern}"
 
-    def generate_description(
-        self, input_grid: np.ndarray, output_grid: np.ndarray
-    ) -> str:
-        def describe_grid(grid, grid_name):
-            unique, counts = np.unique(grid, return_counts=True)
-            color_counts = dict(zip(unique, counts))
-            total_cells = self.grid_size * self.grid_size
+#     def generate_description(self, input_grid: np.ndarray, output_grid: np.ndarray) -> str:
+#         def describe_grid(grid, grid_name):
+#             unique, counts = np.unique(grid, return_counts=True)
+#             color_counts = dict(zip(unique, counts))
+#             total_cells = self.grid_size * self.grid_size
 
-            color_descriptions = []
-            for color in sorted(color_counts.keys()):
-                if color != 0:  # Exclude the background color
-                    percentage = (color_counts[color] / total_cells) * 100
-                    color_descriptions.append(
-                        f"{self.color_map[color]} ({percentage:.1f}%)"
-                    )
+#             color_descriptions = []
+#             for color in sorted(color_counts.keys()):
+#                 if color != 0:  # Exclude the background color
+#                     percentage = (color_counts[color] / total_cells) * 100
+#                     color_descriptions.append(f"{self.color_map[color]} ({percentage:.1f}%)")
 
-            color_list = (
-                ", ".join(color_descriptions[:-1]) + f" and {color_descriptions[-1]}"
-                if len(color_descriptions) > 1
-                else color_descriptions[0]
-            )
+#             if color_descriptions:
+#                 color_list = ", ".join(color_descriptions[:-1]) + f" and {color_descriptions[-1]}" if len(color_descriptions) > 1 else color_descriptions[0]
+#                 return (
+#                     f"The {grid_name} is a {self.grid_size}x{self.grid_size} square with a black background. "
+#                     f"The colors present are {color_list}."
+#                 )
+#             else:
+#                 return f"The {grid_name} is a {self.grid_size}x{self.grid_size} square with only a black background. No colored shapes are present."
 
-            return (
-                f"The {grid_name} is a {self.grid_size}x{self.grid_size} square with a black background, containing {self.num_shapes} shape{'s' if self.num_shapes > 1 else ''}. "
-                f"The colors present are {color_list}."
-            )
+#         input_description = describe_grid(input_grid, "input grid")
+#         output_description = describe_grid(output_grid, "output grid")
 
-        input_description = describe_grid(input_grid, "input grid")
-        output_description = describe_grid(output_grid, "output grid")
+#         difference = f"""
+#     The main differences between the input and output grids are:
+#     1. Shapes of color {self.color_map[self.move_color]} have been moved {self.n} pixel{'s' if self.n > 1 else ''} to the {self.direction}.
+#     2. {"Other shapes remain in their original positions." if self.mode == "move-and-copy" else "Other shapes have been removed."}
+#     3. The overall distribution of colors has changed due to the movement of the {self.color_map[self.move_color]} shape(s).
+#     4. Some parts of the moved shapes may have been repositioned if they would have moved beyond the grid boundaries.
+#     """
 
-        difference = f"""
-The main differences between the input and output grids are:
-1. All shapes of color {self.color_map[self.move_color]} have been moved {self.n} pixel{'s' if self.n > 1 else ''} to the {self.direction}.
-2. {"Other shapes remain in their original positions." if self.mode == "move-and-copy" else "Other shapes have been removed."}
-3. The overall distribution of colors has changed due to the movement of the {self.color_map[self.move_color]} shape{'s' if self.num_shapes > 1 else ''}.
-4. {"Some parts of the moved shapes may have been cut off if they went beyond the grid boundaries." if self.n > 1 else ""}
-"""
+#         return f"{input_description}\n\n{output_description}\n\n{difference}"
 
-        return f"{input_description}\n\n{output_description}\n\n{difference}"
+#     def generate_pattern_description(self) -> str:
+#         return f"""
+# The pattern that transforms the input grid to the output grid involves moving shapes of a specific color. Specifically:
 
-    def generate_pattern_description(self) -> str:
-        return f"""
-The pattern that transforms the input grid to the output grid involves moving shapes of a specific color. Specifically:
+# 1. Grid Composition:
+#    - The grid is {self.grid_size}x{self.grid_size} in size.
+#    - It contains {self.num_shapes} shape{'s' if self.num_shapes > 1 else ''} of various colors.
+#    - The shapes are generated with a maximum size of {self.shape_size}x{self.shape_size}.
+#    - The colors used for the shapes are: {', '.join([self.color_map[color] for color in self.colors])}.
 
-1. Grid Composition:
-   - The grid is {self.grid_size}x{self.grid_size} in size.
-   - It contains {self.num_shapes} shape{'s' if self.num_shapes > 1 else ''} of various colors.
-   - The shapes are generated with a maximum size of {self.shape_size}x{self.shape_size}.
-   - The colors used for the shapes are: {', '.join([self.color_map[color] for color in self.colors])}.
+# 2. Movement Operation:
+#    - Shapes of color {self.color_map[self.move_color]} are moved {self.n} pixel{'s' if self.n > 1 else ''} in the {self.direction} direction.
+#    - If a part of a shape would move beyond the grid boundaries, that part is not displayed in the output.
 
-2. Movement Operation:
-   - Shapes of color {self.color_map[self.move_color]} are moved {self.n} pixel{'s' if self.n > 1 else ''} in the {self.direction} direction.
-   - If a part of a shape would move beyond the grid boundaries, that part is not displayed in the output.
+# 3. Mode of Operation ({self.mode}):
+#    {"- Other shapes remain in their original positions." if self.mode == "move-and-copy" else
+#     "- Other shapes are removed from the grid."}
 
-3. Mode of Operation ({self.mode}):
-   {"- Other shapes remain in their original positions." if self.mode == "move-and-copy" else
-    "- Other shapes are removed from the grid."}
+# 4. Color Preservation:
+#    - The moved shapes retain their original color ({self.color_map[self.move_color]}).
+#    {"- Other shapes, if present, also retain their original colors." if self.mode == "move-and-copy" else ""}
 
-4. Color Preservation:
-   - The moved shapes retain their original color ({self.color_map[self.move_color]}).
-   {"- Other shapes, if present, also retain their original colors." if self.mode == "move-and-copy" else ""}
+# 5. Grid Boundaries:
+#    - The movement is performed within the confines of the original grid size.
+#    - Parts of shapes that would move outside the grid boundaries are cut off.
 
-5. Grid Boundaries:
-   - The movement is performed within the confines of the original grid size.
-   - Parts of shapes that would move outside the grid boundaries are cut off.
-
-This transformation results in a grid where shapes of a specific color have changed position, while the treatment of other shapes depends on the chosen mode of operation. The overall structure of the grid remains the same size, but the distribution of colors within it changes due to the movement.
-"""
+# This transformation results in a grid where shapes of a specific color have changed position, while the treatment of other shapes depends on the chosen mode of operation. The overall structure of the grid remains the same size, but the distribution of colors within it changes due to the movement.
+# """
 
 
 class MirrorShapeTask(GridTask):
