@@ -588,11 +588,15 @@ This pattern effectively performs a targeted color substitution within the grid,
 
 
 class ChangeStrokeColorTask(GridTask):
-    def __init__(self, grid_size, colors, num_squares):
+    def __init__(self, grid_size, colors, num_squares, stroke_color):
         super().__init__()
         self.grid_size = grid_size
         self.colors = colors
         self.num_squares = num_squares
+        self.stroke_color = stroke_color
+
+        # assert that stroke color is not in the colors
+        assert self.stroke_color not in self.colors
 
     def sample(self):
         grid = np.zeros((self.grid_size, self.grid_size), dtype=int)
@@ -605,7 +609,7 @@ class ChangeStrokeColorTask(GridTask):
         return grid
 
     def execute(self, grid: np.ndarray) -> (np.ndarray, str):
-        self.stroke_color = np.random.choice(self.colors)
+
         new_grid = np.copy(grid)
 
         # Find all exterior cells using flood fill
@@ -718,13 +722,12 @@ This stroke color change results in a grid where all shapes are now outlined in 
 
 
 class ChangeFillColorTask(GridTask):
-    def __init__(self):
+    def __init__(self, grid_size, colors, num_squares, fill_color):
         super().__init__()
-        self.grid_size = np.random.randint(MIN_GRID_SIZE, MAX_GRID_SIZE + 1)
-        self.colors = np.random.choice(
-            list(range(1, 7)), size=np.random.randint(2, 7), replace=False
-        )
-        self.num_squares = np.random.randint(1, 4)
+        self.grid_size = grid_size
+        self.colors = colors
+        self.num_squares = num_squares
+        self.fill_color = fill_color
 
     def sample(self):
         grid = np.zeros((self.grid_size, self.grid_size), dtype=int)
@@ -737,7 +740,7 @@ class ChangeFillColorTask(GridTask):
         return grid
 
     def execute(self, grid: np.ndarray) -> (np.ndarray, str):
-        self.fill_color = np.random.choice(self.colors)
+
         new_grid = np.copy(grid)
         for i in range(1, self.grid_size - 1):
             for j in range(1, self.grid_size - 1):
@@ -942,17 +945,18 @@ class PatternIntersectionUnionTask(GridTask):
         grid = np.zeros(self.grid_size, dtype=int)
 
         if self.orientation == "vertical":
-            left_side = np.random.randint(1, self.max_colors + 1, (self.n, self.n))
-            right_side = np.random.randint(1, self.max_colors + 1, (self.n, self.n))
+            left_side = np.random.randint(0, 2, (self.n, self.n))
+            right_side = np.random.randint(0, 2, (self.n, self.n))
 
             grid[:, : self.n] = left_side
             grid[:, self.n + 1 :] = right_side
 
             random_color = np.random.randint(1, 7)
             grid[:, self.n] = random_color
+
         else:  # horizontal
-            top_side = np.random.randint(1, self.max_colors + 1, (self.n, self.n))
-            bottom_side = np.random.randint(1, self.max_colors + 1, (self.n, self.n))
+            top_side = np.random.randint(0, 2, (self.n, self.n))
+            bottom_side = np.random.randint(0, 2, (self.n, self.n))
 
             grid[: self.n, :] = top_side
             grid[self.n + 1 :, :] = bottom_side
@@ -1028,26 +1032,44 @@ class PatternIntersectionUnionTask(GridTask):
                 else color_descriptions[0]
             )
 
-            return (
-                f"The {grid_name} is a {self.grid_size[0]}x{self.grid_size[1]} grid. "
-                f"The colors present are {color_list}."
-            )
+            return f"The {grid_name} is a {self.grid_size[0]}x{self.grid_size[1]} grid containing {color_list}."
 
         input_description = describe_grid(input_grid, "input grid")
         output_description = describe_grid(output_grid, "output grid")
 
-        difference = f"""
-The main differences between the input and output grids are:
-1. The input grid is divided into two main sections by a {self.orientation} divider.
-2. The output grid has been transformed based on the '{self.mode}' operation:
-   {"- It shows the intersection of the two sides." if self.mode == "intersection" else
-    "- It shows the union of the two sides." if self.mode == "union" else
-    f"- The {'left' if self.orientation == 'vertical' else 'top'} side shows the union, while the {'right' if self.orientation == 'vertical' else 'bottom'} side shows the intersection."}
-3. The color distribution has changed as a result of this operation.
-4. {"The divider from the input grid is preserved in the output." if self.mode == "combined" else "The divider from the input grid is not present in the output."}
-"""
+        explanation = f"""
+    Let's break down what's happening in this task:
 
-        return f"{input_description}\n\n{output_description}\n\n{difference}"
+    1. Input Grid Structure:
+    - We start with a {self.grid_size[0]}x{self.grid_size[1]} grid.
+    - This grid is divided into two main sections by a {self.orientation} line of a single color.
+    - Each section contains a pattern of colored cells.
+
+    2. Thinking About the Patterns:
+    - If we consider each colored cell as 'on' and each empty (black) cell as 'off', we can think of these patterns as overlapping.
+    - The question then becomes: how do these patterns interact with each other?
+
+    3. Comparing the Patterns:
+    - We can compare the two sections in two main ways:
+        a) Where do both patterns have 'on' cells? (This is like finding where they overlap or intersect)
+        b) Where does either pattern have 'on' cells? (This is like combining or unioning the patterns)
+
+    4. The Transformation:
+    - In this task, we're asked to perform a '{self.mode}' operation.
+    {"- This means we're looking at where the patterns intersect - where both sections have 'on' cells." if self.mode == "intersection" else
+        "- This means we're combining the patterns - where either section has 'on' cells." if self.mode == "union" else
+        f"- We're doing both: the {'left' if self.orientation == 'vertical' else 'top'} side shows the combined pattern, while the {'right' if self.orientation == 'vertical' else 'bottom'} side shows where they intersect."}
+
+    5. The Result:
+    - In the output grid, we see the result of this operation.
+    - Cells that meet our criteria (intersection or union) keep their original color.
+    - Cells that don't meet the criteria become black (empty).
+    {"- The dividing line is removed in the output." if self.mode != "combined" else "- The dividing line is kept in the output, separating the two types of operations."}
+
+    This process of comparing and combining patterns is a fundamental concept in set theory and logic, which has applications in various fields including computer science and data analysis.
+    """
+
+        return f"{input_description}\n\n{output_description}\n\n{explanation}"
 
     def generate_pattern_description(self) -> str:
         return f"""
@@ -1224,36 +1246,40 @@ class MoveShapeTask(GridTask):
             positions = np.argwhere(old_grid == color)
             if direction == "right":
                 for i, j in positions:
-                    if j + n < self.grid_size:
-                        new_grid[i, j + n] = color
+                    new_j = min(j + n, self.grid_size - 1)
+                    new_grid[i, new_j] = color
             elif direction == "left":
                 for i, j in positions:
-                    if j - n >= 0:
-                        new_grid[i, j - n] = color
+                    new_j = max(j - n, 0)
+                    new_grid[i, new_j] = color
             elif direction == "bottom":
                 for i, j in positions:
-                    if i + n < self.grid_size:
-                        new_grid[i + n, j] = color
+                    new_i = min(i + n, self.grid_size - 1)
+                    new_grid[new_i, j] = color
             elif direction == "top":
                 for i, j in positions:
-                    if i - n >= 0:
-                        new_grid[i - n, j] = color
+                    new_i = max(i - n, 0)
+                    new_grid[new_i, j] = color
             elif direction == "top-right":
                 for i, j in positions:
-                    if i - n >= 0 and j + n < self.grid_size:
-                        new_grid[i - n, j + n] = color
+                    new_i = max(i - n, 0)
+                    new_j = min(j + n, self.grid_size - 1)
+                    new_grid[new_i, new_j] = color
             elif direction == "top-left":
                 for i, j in positions:
-                    if i - n >= 0 and j - n >= 0:
-                        new_grid[i - n, j - n] = color
+                    new_i = max(i - n, 0)
+                    new_j = max(j - n, 0)
+                    new_grid[new_i, new_j] = color
             elif direction == "bottom-right":
                 for i, j in positions:
-                    if i + n < self.grid_size and j + n < self.grid_size:
-                        new_grid[i + n, j + n] = color
+                    new_i = min(i + n, self.grid_size - 1)
+                    new_j = min(j + n, self.grid_size - 1)
+                    new_grid[new_i, new_j] = color
             elif direction == "bottom-left":
                 for i, j in positions:
-                    if i + n < self.grid_size and j - n >= 0:
-                        new_grid[i + n, j - n] = color
+                    new_i = min(i + n, self.grid_size - 1)
+                    new_j = max(j - n, 0)
+                    new_grid[new_i, new_j] = color
 
         move_shape(new_grid, grid, self.move_color, self.n, self.direction)
 
@@ -3787,7 +3813,7 @@ class ShapeMoverTask(GridTask):
 
 # List of all tasks
 tasks = [
-    ColorReplacementTask,
+    # ColorReplacementTask,
     # ShiftGridTask,
     # DrawSquaresTask,
     # ChangeStrokeColorTask,
@@ -3984,11 +4010,35 @@ import matplotlib.colors as mcolors
 # print(f"Generated examples and saved to {output_file}")
 
 for i in range(4):
-    grid_size = np.random.randint(8, 13)
-    colors = np.random.choice(range(1, 7), size=3, replace=False)
+    grid_size = np.random.randint(4, 18)
+    colors = np.random.choice(range(1, 7), size=5, replace=False)
     fill_color = np.random.choice(range(1, 7))
     direction = np.random.choice(["up", "down", "left", "right"])
-    task = ShiftGridTask(grid_size, colors, fill_color, direction)
+    # stroke_color pick one not in colors
+    stroke_color = np.random.choice(
+        [color for color in range(1, 7) if color not in colors]
+    )
+    mode = np.random.choice(["intersection", "union", "combined"])
+    orientation = np.random.choice(["horizontal", "vertical"])
+
+    # task = RotateShapeTask(
+    #     grid_size,
+    #     2,
+    #     colors,
+    #     np.random.choice(["clockwise", "counter-clockwise", "180"]),
+    #     3,
+    # )
+
+    task = MoveShapeTask(
+        grid_size,
+        3,
+        colors,
+        4,
+        3,
+        3,
+        direction,
+        np.random.choice(["move-and-cop", "move"]),
+    )
     input_grid = task.sample()
     output_grid, instruction = task.execute(input_grid)
     print(instruction)
