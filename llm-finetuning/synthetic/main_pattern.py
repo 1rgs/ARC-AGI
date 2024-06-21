@@ -2919,6 +2919,327 @@ This transformation effectively rotates and recolors specific elements of the gr
 """
 
 
+import numpy as np
+
+
+class SymmetryCreationTask(GridTask):
+    def __init__(self, grid_size, shape_color, line_color):
+        super().__init__()
+        self.grid_size = grid_size
+        self.shape_color = shape_color
+        self.line_color = line_color
+
+    def sample(self):
+        grid = np.zeros((self.grid_size, self.grid_size), dtype=int)
+
+        # Create a random shape on the left half
+        shape_size = self.grid_size // 2 - 1
+        shape = generate_shape(shape_size, shape_size // 2)
+        shape[shape == 1] = self.shape_color
+
+        # Place the shape on the left side of the grid
+        start_x = np.random.randint(0, self.grid_size - shape_size)
+        grid[start_x : start_x + shape_size, :shape_size] = shape
+
+        # Add the dividing line
+        mid = self.grid_size // 2
+        grid[:, mid] = self.line_color
+
+        return grid
+
+    def execute(self, grid: np.ndarray) -> (np.ndarray, str):
+        new_grid = np.copy(grid)
+        mid = self.grid_size // 2
+
+        # Remove the dividing line
+        new_grid[:, mid] = 0
+
+        # Mirror the left half to the right half
+        new_grid[:, mid + 1 :] = np.fliplr(new_grid[:, :mid])
+
+        description = self.generate_description(grid, new_grid)
+        pattern = self.generate_pattern_description()
+        return new_grid, f"{description}\n\n{pattern}"
+
+    def generate_description(
+        self, input_grid: np.ndarray, output_grid: np.ndarray
+    ) -> str:
+        def describe_grid(grid, grid_name):
+            unique, counts = np.unique(grid, return_counts=True)
+            color_counts = dict(zip(unique, counts))
+            total_cells = self.grid_size * self.grid_size
+
+            color_descriptions = []
+            for color in sorted(color_counts.keys()):
+                if color != 0:  # Exclude the background color
+                    percentage = (color_counts[color] / total_cells) * 100
+                    color_descriptions.append(
+                        f"{self.color_map[color]} ({color_counts[color]} cells, {percentage:.1f}%)"
+                    )
+
+            color_list = (
+                ", ".join(color_descriptions[:-1]) + f" and {color_descriptions[-1]}"
+                if len(color_descriptions) > 1
+                else color_descriptions[0]
+            )
+
+            if grid_name == "input grid":
+                shape_description = (
+                    f"a {self.color_map[self.shape_color]} shape on the left half"
+                )
+                line_description = f"a vertical {self.color_map[self.line_color]} line exactly in the middle"
+                return f"""Looking at the {grid_name}, we see a {self.grid_size}x{self.grid_size} square grid. 
+The grid is divided into two halves by {line_description}, which runs from top to bottom.
+On the left side of this line, we see {shape_description}. This shape appears to be randomly generated and positioned.
+The right side of the grid is completely black, creating a stark contrast with the left side.
+The colors present in this grid are {color_list}.
+The colored cells (including the line) occupy {np.sum(grid > 0)} cells ({(np.sum(grid > 0) / total_cells) * 100:.1f}% of the grid), 
+while the remaining {np.sum(grid == 0)} cells ({(np.sum(grid == 0) / total_cells) * 100:.1f}% of the grid) are black background.
+This arrangement gives the grid a distinctly asymmetrical appearance."""
+            else:
+                return f"""Looking at the {grid_name}, we see a {self.grid_size}x{self.grid_size} square grid. 
+The grid has a black background, with a symmetrical {self.color_map[self.shape_color]} shape spanning both halves of the grid.
+The colors present in this grid are {color_list}.
+The colored cells occupy {np.sum(grid > 0)} cells ({(np.sum(grid > 0) / total_cells) * 100:.1f}% of the grid), 
+while the remaining {np.sum(grid == 0)} cells ({(np.sum(grid == 0) / total_cells) * 100:.1f}% of the grid) are black background.
+The shape appears to be perfectly mirrored across the vertical center line of the grid."""
+
+        input_description = describe_grid(input_grid, "input grid")
+        output_description = describe_grid(output_grid, "output grid")
+
+        difference = f"""
+When comparing the input and output grids, we notice several key differences:
+
+1. The most obvious change is the removal of the {self.color_map[self.line_color]} vertical line that was in the middle of the input grid. This line is completely absent in the output grid.
+2. The {self.color_map[self.shape_color]} shape, which was only on the left half of the input grid, now appears on both halves of the output grid.
+3. The right half of the output grid, which was entirely black in the input, now contains a mirrored version of the shape from the left half.
+4. The total number of {self.color_map[self.shape_color]} cells has approximately doubled, while the {self.color_map[self.line_color]} cells have disappeared entirely.
+5. The overall structure of the grid has changed from a distinctly asymmetrical design (with a clear divide between left and right) to a symmetrical one.
+6. The center of the grid, where the line used to be, now forms the axis of symmetry for the shape.
+
+This transformation has created a perfect left-right symmetry in the output grid, based on the shape present in the left half of the input grid, while removing the dividing line.
+"""
+
+        return f"{input_description}\n\n{output_description}\n\n{difference}"
+
+    def generate_pattern_description(self) -> str:
+        return f"""
+After carefully observing the changes between the input and output grids, we can describe the pattern of transformation as follows:
+
+1. Grid Structure:
+   - We start with a {self.grid_size}x{self.grid_size} grid.
+   - The input grid is clearly divided into two halves by a {self.color_map[self.line_color]} vertical line in the middle.
+   - The left half contains a {self.color_map[self.shape_color]} shape, while the right half is entirely black.
+
+2. Line Removal:
+   - The {self.color_map[self.line_color]} vertical line in the middle of the grid is completely removed.
+   - This erases the clear division between the left and right halves of the grid.
+
+3. Shape Mirroring:
+   - The {self.color_map[self.shape_color]} shape on the left half of the input grid is used as a basis for the symmetry.
+   - This shape is mirrored onto the right half of the grid, filling the previously empty space.
+
+4. Symmetry Creation:
+   - The mirroring process creates perfect left-right symmetry in the output grid.
+   - Every {self.color_map[self.shape_color]} cell on the left has a corresponding {self.color_map[self.shape_color]} cell on the right, equidistant from the center line.
+
+5. Background Preservation:
+   - The black background cells that are not part of the shape remain unchanged.
+   - This includes cells that were originally black on both the left and right sides.
+
+6. Consistency:
+   - The mirroring is applied consistently across the entire height of the grid.
+   - The vertical center line, where the {self.color_map[self.line_color]} line used to be, becomes the axis of symmetry.
+
+7. Resulting Pattern:
+   - The output grid shows a symmetrical {self.color_map[self.shape_color]} shape or pattern, balanced equally on both sides of the center.
+   - The grid no longer has any {self.color_map[self.line_color]} cells, only {self.color_map[self.shape_color]} and black.
+
+This transformation effectively takes an asymmetrical input with a clear dividing line and converts it into a symmetrical output by mirroring the left half of the shape and removing the dividing line. It demonstrates how symmetry can be created from partial information, using mirroring as the key operation and treating the former dividing line as a new axis of symmetry.
+"""
+
+
+import numpy as np
+
+
+class VennDiagramTask(GridTask):
+    def __init__(self, grid_size, num_squares, colors):
+        super().__init__()
+        self.grid_size = grid_size
+        self.num_squares = num_squares
+        self.colors = colors
+        self.intersection_color = max(colors) + 1  # New color for intersections
+
+    def sample(self):
+        grid = np.zeros((self.grid_size, self.grid_size), dtype=int)
+
+        for i in range(self.num_squares):
+            size = np.random.randint(self.grid_size // 4, self.grid_size // 2)
+            color = self.colors[i]
+            start_x = np.random.randint(0, self.grid_size - size)
+            start_y = np.random.randint(0, self.grid_size - size)
+            grid[start_x : start_x + size, start_y : start_y + size] = color
+
+        return grid
+
+    def execute(self, grid: np.ndarray) -> (np.ndarray, str):
+        new_grid = np.copy(grid)
+
+        # Find intersections
+        intersection = np.zeros_like(grid, dtype=bool)
+        for color in self.colors:
+            intersection |= grid == color
+
+        # Color intersections
+        new_grid[np.where((intersection) & (grid == 0))] = self.intersection_color
+
+        description = self.generate_description(grid, new_grid)
+        pattern = self.generate_pattern_description()
+        return new_grid, f"{description}\n\n{pattern}"
+
+    def generate_description(
+        self, input_grid: np.ndarray, output_grid: np.ndarray
+    ) -> str:
+        def describe_grid(grid, grid_name):
+            unique, counts = np.unique(grid, return_counts=True)
+            color_counts = dict(zip(unique, counts))
+            total_cells = self.grid_size * self.grid_size
+
+            color_descriptions = []
+            for color in sorted(color_counts.keys()):
+                if color != 0:  # Exclude the background color
+                    percentage = (color_counts[color] / total_cells) * 100
+                    color_descriptions.append(
+                        f"{self.color_map[color]} ({color_counts[color]} cells, {percentage:.1f}%)"
+                    )
+
+            color_list = (
+                ", ".join(color_descriptions[:-1]) + f" and {color_descriptions[-1]}"
+                if len(color_descriptions) > 1
+                else color_descriptions[0]
+            )
+
+            if grid_name == "input grid":
+                squares_description = ", ".join(
+                    [f"a {self.color_map[color]} square" for color in self.colors]
+                )
+                return f"""Looking at the {grid_name}, we see a {self.grid_size}x{self.grid_size} square grid. 
+The grid has a black background, on which {self.num_squares} colored squares are placed: {squares_description}.
+These squares are of different sizes and are positioned randomly across the grid.
+Some of these squares overlap with each other, creating areas where multiple colors seem to be competing for the same space.
+In the overlapping areas, the color of the square that was placed last is visible, obscuring the colors underneath.
+The colors present in this grid are {color_list}.
+The colored cells occupy {np.sum(grid > 0)} cells ({(np.sum(grid > 0) / total_cells) * 100:.1f}% of the grid), 
+while the remaining {np.sum(grid == 0)} cells ({(np.sum(grid == 0) / total_cells) * 100:.1f}% of the grid) are black background.
+This arrangement creates a complex pattern of overlapping shapes, reminiscent of a simplified, colorful Venn diagram."""
+            else:
+                return f"""Looking at the {grid_name}, we see a {self.grid_size}x{self.grid_size} square grid. 
+The grid has a black background, with {self.num_squares} colored squares and additional {self.color_map[self.intersection_color]} areas.
+The colors present in this grid are {color_list}.
+The colored cells occupy {np.sum(grid > 0)} cells ({(np.sum(grid > 0) / total_cells) * 100:.1f}% of the grid), 
+while the remaining {np.sum(grid == 0)} cells ({(np.sum(grid == 0) / total_cells) * 100:.1f}% of the grid) are black background.
+The {self.color_map[self.intersection_color]} areas appear in locations where squares overlap, creating a clear visual representation of intersections."""
+
+        input_description = describe_grid(input_grid, "input grid")
+        output_description = describe_grid(output_grid, "output grid")
+
+        intersection_cells = np.sum(output_grid == self.intersection_color)
+        total_cells = self.grid_size * self.grid_size
+        intersection_percentage = (intersection_cells / total_cells) * 100
+
+        difference = f"""
+When comparing the input and output grids, we notice several key differences:
+
+1. The most striking change is the appearance of {self.color_map[self.intersection_color]} cells in the output grid, which were not present in the input grid.
+2. These new {self.color_map[self.intersection_color]} cells appear in areas where the colored squares overlap in the input grid.
+3. In the input grid, overlapping areas were simply colored with the last placed square's color. Now, these areas are distinctly marked in {self.color_map[self.intersection_color]}.
+4. The original colored squares remain in their same positions, but their overlapping areas are now filled with the new {self.color_map[self.intersection_color]} color.
+5. Specifically, {intersection_cells} cells ({intersection_percentage:.1f}% of the grid) are now {self.color_map[self.intersection_color]}, representing intersections between squares.
+6. The black background cells that are not part of any square or intersection remain unchanged.
+7. The overall structure of the grid has changed from simple overlapping squares to a true Venn diagram-like representation, clearly showing all intersections.
+
+This transformation has effectively created a visual representation of set intersections, similar to a Venn diagram, by highlighting the overlapping areas of the colored squares with a distinct color.
+"""
+
+        return f"{input_description}\n\n{output_description}\n\n{difference}"
+
+    def generate_pattern_description(self) -> str:
+        return f"""
+After carefully observing the changes between the input and output grids, we can describe the pattern of transformation as follows:
+
+1. Grid Structure:
+   - We start with a {self.grid_size}x{self.grid_size} grid.
+   - The input grid contains {self.num_squares} colored squares of various sizes, randomly positioned and potentially overlapping.
+
+2. Intersection Identification:
+   - The transformation identifies areas where two or more colored squares overlap.
+   - In the input, these areas were simply colored with the last placed square's color.
+
+3. New Color Introduction:
+   - A new color, {self.color_map[self.intersection_color]}, is introduced specifically for intersections.
+   - This color was not present in the input grid.
+
+4. Intersection Coloring:
+   - All identified intersection areas are filled with the new {self.color_map[self.intersection_color]} color.
+   - This includes areas where two or more squares overlap, regardless of their original colors.
+   - The intersection color is applied consistently, whether it's an overlap of two, three, or more squares.
+
+5. Original Square Preservation:
+   - The original colored squares remain in their initial positions.
+   - Their non-overlapping areas retain their original colors.
+   - This means that the outer edges of each square (where they don't overlap with others) keep their initial colors.
+
+6. Background Preservation:
+   - The black background cells that are not part of any square or intersection remain unchanged.
+   - This maintains the overall layout and positioning of the squares within the grid.
+
+7. Consistency:
+   - This intersection coloring is applied consistently across the entire grid.
+   - Every overlapping area, no matter how small or large, is treated the same way.
+
+8. Resulting Pattern:
+   - The output grid now resembles a true Venn diagram, clearly showing:
+     a. The original squares in their respective colors, representing distinct sets.
+     b. Intersections between squares in the new {self.color_map[self.intersection_color]} color, representing overlaps between sets.
+     c. Non-overlapping areas of squares in their original colors, representing unique elements of each set.
+   - This creates a clear visual distinction between unique areas (single colors) and shared areas (intersection color).
+
+9. Visual Clarity:
+   - The transformation enhances the visual representation of set relationships.
+   - It becomes immediately clear which areas are shared between different colored squares (sets) and which are unique to each.
+
+10. Potential for Analysis:
+    - This transformed grid allows for easy identification of:
+      - How many squares overlap in any given area (by looking at the presence of the intersection color).
+      - Which specific squares are overlapping (by observing which original colors are adjacent to an intersection).
+      - The extent of overlap between different squares (by the size of the intersection areas).
+
+This transformation effectively converts a simple arrangement of overlapping colored squares into a more complex and informative representation that highlights all intersections. It visually demonstrates the concept of set intersections, similar to how Venn diagrams are used in mathematics and logic to represent relationships between different sets. The pattern reveals hidden information about overlaps that was not immediately apparent in the input grid.
+"""
+
+    def execute(self, grid: np.ndarray) -> (np.ndarray, str):
+        new_grid = np.copy(grid)
+
+        # Find all areas covered by any square
+        covered = np.zeros_like(grid, dtype=bool)
+        for color in self.colors:
+            covered |= grid == color
+
+        # Find intersections (areas covered by more than one square)
+        intersection = np.zeros_like(grid, dtype=bool)
+        for color in self.colors:
+            temp = np.zeros_like(grid, dtype=bool)
+            temp[grid == color] = True
+            intersection |= temp & (covered ^ temp)
+
+        # Color intersections
+        new_grid[intersection] = self.intersection_color
+
+        description = self.generate_description(grid, new_grid)
+        pattern = self.generate_pattern_description()
+        return new_grid, f"{description}\n\n{pattern}"
+
+
 import os
 
 # Create a directory to save images
