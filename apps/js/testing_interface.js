@@ -275,6 +275,9 @@ function nextTask() {
   } else {
     errorMsg("No more tasks available.");
   }
+
+  // find everything with .grid-wrapper and remove it
+  // $(".grid-wrapper").remove();
 }
 
 function nextTestInput() {
@@ -312,7 +315,9 @@ function submitSolution() {
 
 function fillTestInput(inputGrid) {
   jqInputGrid = $("#evaluation_input");
+
   fillJqGridWithData(jqInputGrid, inputGrid);
+
   fitCellsToContainer(jqInputGrid, inputGrid.height, inputGrid.width, 400, 400);
 }
 

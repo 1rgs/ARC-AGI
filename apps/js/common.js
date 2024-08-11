@@ -141,6 +141,9 @@ async function getCaptionFromTogether(data) {
 
 function fillJqGridWithData(jqGrid, dataGrid) {
   jqGrid.empty();
+  // remove the caption from parent if it exists
+  jqGrid.parent().find("button").remove();
+
   height = dataGrid.height;
   width = dataGrid.width;
   for (var i = 0; i < height; i++) {
