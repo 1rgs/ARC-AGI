@@ -1,0 +1,18 @@
+[tool.poetry]
+name = "arc-agi"
+version = "0.1.0"
+description = ""
+authors = ["Rahul Sengottuvelu <rgs@ramp.com>"]
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "^3.10"
+anthropic = "^0.29.0"
+python-dotenv = "^1.0.1"
+matplotlib = "^3.9.0"
+numpy = "^2.0.0"
+
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
