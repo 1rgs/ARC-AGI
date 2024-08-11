@@ -118,8 +118,9 @@ function fillPairPreview(pairId, inputGrid, outputGrid) {
     pairSlot.appendTo("#task_preview");
   }
   var jqInputGrid = pairSlot.find(".input_preview");
+
   if (!jqInputGrid.length) {
-    jqInputGrid = $('<div class="input_preview"></div>');
+    jqInputGrid = $('<div class="input_preview"><div ></div></div>');
     jqInputGrid.appendTo(pairSlot);
   }
   var jqOutputGrid = pairSlot.find(".output_preview");

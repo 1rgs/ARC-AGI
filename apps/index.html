@@ -93,6 +93,34 @@
                 <input type="text" id="task_id" name="task_id" />
                 <button type="button" onclick="loadTaskById()">Load</button>
               </form>
+
+              <script>
+                function saveTogether() {
+                  var together_key = document.getElementById("together_key").value;
+                  var together_model = document.getElementById("together_model").value;
+                  localStorage.setItem("together_key", together_key);
+                  localStorage.setItem("together_model", together_model);
+                }
+              </script>
+              <br><br>
+              <form>
+                <label for="together_key">Together API key: </label>
+                <input type="text" id="together_key" name="together_key" />
+                <br>
+                <label for="together_model">Together model: </label>
+                <input type="text" id="together_model" name="together_model" />
+                <button type="button" onclick="saveTogether()">Save</button>
+              </form>
+
+              <script>
+                function loadTogether() {
+                  var together_key = localStorage.getItem("together_key");
+                  var together_model = localStorage.getItem("together_model");
+                  document.getElementById("together_key").value = together_key;
+                  document.getElementById("together_model").value = together_model;
+                }
+                loadTogether();
+              </script>
               
             </p>
           </div>
